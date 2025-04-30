@@ -43,7 +43,59 @@ expanded_affiliate_links = {
     "cake decorating": {
         "keywords": ["cake decorating", "piping tips", "frosting tools", "decorating kit", "icing tools"],
         "url": "https://amzn.to/4lUd08m"
-    }
+    },
+    "whisk": {
+    "keywords": ["whisk", "balloon whisk", "wire whisk"],
+    "url": "https://amzn.to/3GwiBlk"
+},
+"bench scraper": {
+    "keywords": ["bench scraper", "dough scraper", "pastry scraper"],
+    "url": "https://amzn.to/3GzcuN2"
+},
+"loaf pan": {
+    "keywords": ["loaf pan", "bread pan"],
+    "url": "https://amzn.to/42XzcpD"
+},
+"almond flour": {
+    "keywords": ["almond flour", "blanched almond flour"],
+    "url": "https://amzn.to/4iCs3kx"
+},
+"no sugar added chocolate chips": {
+    "keywords": ["no sugar chocolate chips", "sugar-free chocolate chips", "healthy chocolate chips"],
+    "url": "https://amzn.to/3SfqlKU"
+},
+"monk fruit sweetener": {
+    "keywords": ["monk fruit", "monk fruit sweetener", "monkfruit"],
+    "url": "https://amzn.to/4cSRP2u"
+},
+"coconut sugar": {
+    "keywords": ["coconut sugar", "natural sugar"],
+    "url": "https://amzn.to/42TZN6S"
+},
+"whole wheat flour": {
+    "keywords": ["whole wheat flour", "whole grain flour"],
+    "url": "https://amzn.to/4jAbpmQ"
+},
+"cake flour": {
+    "keywords": ["cake flour", "soft wheat flour"],
+    "url": "https://amzn.to/3YmwUz1"
+},
+"silicone baking mat": {
+    "keywords": ["silicone baking mat", "silpat", "nonstick baking mat"],
+    "url": "https://amzn.to/4jJcRmI"
+},
+"avocado oil": {
+    "keywords": ["avocado oil", "healthy oil", "cooking oil"],
+    "url": "https://amzn.to/3EwlK43"
+},
+"digital thermometer": {
+    "keywords": ["digital thermometer", "meat thermometer", "kitchen thermometer"],
+    "url": "https://amzn.to/42SIDXr"
+},
+"food storage containers": {
+    "keywords": ["food storage", "meal prep containers", "storage containers"],
+    "url": "https://amzn.to/4k1U7ip"
+}
 }
 
 # Function to inject conversational affiliate links based on keyword variants
