@@ -5,6 +5,7 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv
 import re
+import random
 
 # Expanded affiliate links with keyword variants
 expanded_affiliate_links = {
@@ -33,7 +34,7 @@ expanded_affiliate_links = {
         "url": "https://amzn.to/3Gy1mQv"
     },
     "6-inch pan": {
-        "keywords": ["6-inch pan", "6-inch" "six inch cake pan", "6\" cake pan"],
+        "keywords": ["6-inch pan", "6-inch", "six inch cake pan", "6\" cake pan"],
         "url": "https://amzn.to/4lRwo64"
     },
     "9-inch pan": {
@@ -45,64 +46,60 @@ expanded_affiliate_links = {
         "url": "https://amzn.to/4lUd08m"
     },
     "whisk": {
-    "keywords": ["whisk", "balloon whisk", "wire whisk"],
-    "url": "https://amzn.to/3GwiBlk"
-},
-"bench scraper": {
-    "keywords": ["bench scraper", "dough scraper", "pastry scraper"],
-    "url": "https://amzn.to/3GzcuN2"
-},
-"loaf pan": {
-    "keywords": ["loaf pan", "bread pan"],
-    "url": "https://amzn.to/42XzcpD"
-},
-"almond flour": {
-    "keywords": ["almond flour", "blanched almond flour"],
-    "url": "https://amzn.to/4iCs3kx"
-},
-"no sugar added chocolate chips": {
-    "keywords": ["no sugar chocolate chips", "sugar-free chocolate chips", "healthy chocolate chips"],
-    "url": "https://amzn.to/3SfqlKU"
-},
-"monk fruit sweetener": {
-    "keywords": ["monk fruit", "monk fruit sweetener", "monkfruit"],
-    "url": "https://amzn.to/4cSRP2u"
-},
-"coconut sugar": {
-    "keywords": ["coconut sugar", "natural sugar"],
-    "url": "https://amzn.to/42TZN6S"
-},
-"whole wheat flour": {
-    "keywords": ["whole wheat flour", "whole grain flour"],
-    "url": "https://amzn.to/4jAbpmQ"
-},
-"cake flour": {
-    "keywords": ["cake flour", "soft wheat flour"],
-    "url": "https://amzn.to/3YmwUz1"
-},
-"silicone baking mat": {
-    "keywords": ["silicone baking mat", "silpat", "nonstick baking mat"],
-    "url": "https://amzn.to/4jJcRmI"
-},
-"avocado oil": {
-    "keywords": ["avocado oil", "healthy oil", "cooking oil"],
-    "url": "https://amzn.to/3EwlK43"
-},
-"digital thermometer": {
-    "keywords": ["digital thermometer", "meat thermometer", "kitchen thermometer"],
-    "url": "https://amzn.to/42SIDXr"
-},
-"food storage containers": {
-    "keywords": ["food storage", "meal prep containers", "storage containers"],
-    "url": "https://amzn.to/4k1U7ip"
+        "keywords": ["whisk", "balloon whisk", "wire whisk"],
+        "url": "https://amzn.to/3GwiBlk"
+    },
+    "bench scraper": {
+        "keywords": ["bench scraper", "dough scraper", "pastry scraper"],
+        "url": "https://amzn.to/3GzcuN2"
+    },
+    "loaf pan": {
+        "keywords": ["loaf pan", "bread pan"],
+        "url": "https://amzn.to/42XzcpD"
+    },
+    "almond flour": {
+        "keywords": ["almond flour", "blanched almond flour"],
+        "url": "https://amzn.to/4iCs3kx"
+    },
+    "no sugar added chocolate chips": {
+        "keywords": ["no sugar chocolate chips", "sugar-free chocolate chips", "healthy chocolate chips"],
+        "url": "https://amzn.to/3SfqlKU"
+    },
+    "monk fruit sweetener": {
+        "keywords": ["monk fruit", "monk fruit sweetener", "monkfruit"],
+        "url": "https://amzn.to/4cSRP2u"
+    },
+    "coconut sugar": {
+        "keywords": ["coconut sugar", "natural sugar"],
+        "url": "https://amzn.to/42TZN6S"
+    },
+    "whole wheat flour": {
+        "keywords": ["whole wheat flour", "whole grain flour"],
+        "url": "https://amzn.to/4jAbpmQ"
+    },
+    "cake flour": {
+        "keywords": ["cake flour", "soft wheat flour"],
+        "url": "https://amzn.to/3YmwUz1"
+    },
+    "silicone baking mat": {
+        "keywords": ["silicone baking mat", "silpat", "nonstick baking mat"],
+        "url": "https://amzn.to/4jJcRmI"
+    },
+    "avocado oil": {
+        "keywords": ["avocado oil", "healthy oil", "cooking oil"],
+        "url": "https://amzn.to/3EwlK43"
+    },
+    "digital thermometer": {
+        "keywords": ["digital thermometer", "meat thermometer", "kitchen thermometer"],
+        "url": "https://amzn.to/42SIDXr"
+    },
+    "food storage containers": {
+        "keywords": ["food storage", "meal prep containers", "storage containers"],
+        "url": "https://amzn.to/4k1U7ip"
+    }
 }
-}
 
-# Function to inject conversational affiliate links based on keyword variants
-
-import random
-import re
-
+# Function to inject one inline affiliate link per GPT response
 def add_affiliate_links_inline(response_text, product_map):
     lower_text = response_text.lower()
     candidates = []
@@ -124,36 +121,6 @@ def add_affiliate_links_inline(response_text, product_map):
         return f"[{match.group(1)}]({url})"
 
     return pattern.sub(replacer, response_text, count=1)
-    recommendations = []
-    lower_text = response_text.lower()
-
-    print("\n[DEBUG] GPT Response (lowercased):\n", lower_text)
-
-    for product, data in product_map.items():
-        for keyword in data["keywords"]:
-            pattern = re.compile(rf'(?<!\w){re.escape(keyword.lower())}(s)?(?!\w)')
-            print(f"[DEBUG] Checking for keyword: '{keyword}' with pattern: '{pattern.pattern}'")
-            if pattern.search(lower_text):
-                print(f"[MATCH] Found keyword: {keyword} for product: {product}")
-                if product == "mixer":
-                    recommendations.append(f"\ud83d\udc49 Thinking about getting a mixer? [This one]({data['url']}) is my go-to.")
-                elif product == "spatula":
-                    recommendations.append(f"\ud83d\udc49 I swear by [this spatula]({data['url']})\u2014super handy in the kitchen.")
-                elif product == "scale":
-                    recommendations.append(f"\ud83d\udc49 For accuracy, [this kitchen scale]({data['url']}) does the trick.")
-                elif product == "cake decorating":
-                    recommendations.append(f"\ud83d\udc49 Want to level up your cake game? [This decorating kit]({data['url']}) is a must.")
-                else:
-                    recommendations.append(f"\ud83d\udc49 Check out [this {product}]({data['url']}) I recommend.")
-                break
-
-    if recommendations:
-        print(f"[DEBUG] Appending {len(recommendations)} affiliate link(s).")
-        response_text += "\n\n" + "\n".join(recommendations)
-    else:
-        print("[DEBUG] No affiliate keywords matched.")
-
-    return response_text
 
 # Load environment variables from .env
 load_dotenv()
@@ -173,7 +140,6 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY)
 def home():
     return "Kitchen Companion is live!"
 
-# GPT Assistant endpoint
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
     data = request.get_json()
@@ -184,26 +150,20 @@ def ask_gpt():
 
     try:
         response = openai_client.chat.completions.create(
-    model="gpt-3.5-turbo-1106",
-    messages=[
-        {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional. You ask smart questions, expect precise answers, and you’re not afraid to call it like it is. You’ve got that 'work hard, vibe harder' attitude: sharp when it matters, laid-back when it doesn’t. Whether you’re dialing in substitutions, walking someone through a recipe, or cracking a joke, keep it grounded, smart, and unbothered. Efficient, but never stiff. Cool, but never careless. Never invent scientific claims, and always ask for clarification if a user’s request is unclear. You're here to help people feel confident in the kitchen—beginner to pro—with just the right mix of grit and good vibes."},
-        {"role": "user", "content": user_input}
-    ],
-    max_tokens=700,
-    temperature=0.7
-)
-            ]
+            model="gpt-3.5-turbo-1106",
+            messages=[
+                {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional. You ask smart questions, expect precise answers, and you’re not afraid to call it like it is. You’ve got that 'work hard, vibe harder' attitude: sharp when it matters, laid-back when it doesn’t. Whether you’re dialing in substitutions, walking someone through a recipe, or cracking a joke, keep it grounded, smart, and unbothered. Efficient, but never stiff. Cool, but never careless. Never invent scientific claims, and always ask for clarification if a user’s request is unclear. You're here to help people feel confident in the kitchen—beginner to pro—with just the right mix of grit and good vibes."},
+                {"role": "user", "content": user_input}
+            ],
+            max_tokens=700,
+            temperature=0.7
         )
         reply = response.choices[0].message.content
-
-        # Inject affiliate links with better keyword matching
         reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
-
         return jsonify({"reply": reply_with_links})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Recipe Search endpoint
 @app.route('/search_recipes', methods=['GET'])
 def search_recipes():
     query = request.args.get('query')
@@ -233,7 +193,6 @@ def search_recipes():
     else:
         return jsonify({'error': 'API call failed', 'details': response.text}), response.status_code
 
-# Recipe Details endpoint
 @app.route('/get_recipe_details', methods=['GET'])
 def get_recipe_details():
     recipe_id = request.args.get('id')
