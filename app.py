@@ -4,6 +4,8 @@ import requests
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, firestore
 import re
 import random
 
@@ -99,14 +101,34 @@ expanded_affiliate_links = {
     }
 }
 
-# Function to inject one inline affiliate link per GPT response
+}
+
+# Load environment variables from .env
+load_dotenv()
+
+# Initialize Firebase
+if not firebase_admin._apps:
+    cred = credentials.Certificate("firebase-service-account.json")
+    firebase_admin.initialize_app(cred)
+
+db = firestore.client()
+
+# Initialize Flask app
+app = Flask(__name__)
+CORS(app)
+
+# Initialize OpenAI client
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=OPENAI_API_KEY)
+
+# Function to inject one random affiliate link inline
 def add_affiliate_links_inline(response_text, product_map):
     lower_text = response_text.lower()
     candidates = []
 
     for product, data in product_map.items():
         for keyword in data["keywords"]:
-            pattern = r'\b' + re.escape(keyword.lower()) + r's?\b'
+            pattern = r'\\b' + re.escape(keyword.lower()) + r's?\\b'
             if re.search(pattern, lower_text):
                 candidates.append((keyword, data["url"]))
                 break
@@ -115,26 +137,12 @@ def add_affiliate_links_inline(response_text, product_map):
         return response_text
 
     chosen_keyword, url = random.choice(candidates)
-    pattern = re.compile(r'\b(' + re.escape(chosen_keyword) + r')\b', re.IGNORECASE)
+    pattern = re.compile(r'\\b(' + re.escape(chosen_keyword) + r')\\b', re.IGNORECASE)
 
     def replacer(match):
         return f"[{match.group(1)}]({url})"
 
     return pattern.sub(replacer, response_text, count=1)
-
-# Load environment variables from .env
-load_dotenv()
-
-# Initialize Flask app
-app = Flask(__name__)
-CORS(app)
-
-# Load API keys
-SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
 @app.route('/')
 def home():
@@ -152,7 +160,7 @@ def ask_gpt():
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
             messages=[
-                {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional. You ask smart questions, expect precise answers, and you’re not afraid to call it like it is. You’ve got that 'work hard, vibe harder' attitude: sharp when it matters, laid-back when it doesn’t. Whether you’re dialing in substitutions, walking someone through a recipe, or cracking a joke, keep it grounded, smart, and unbothered. Efficient, but never stiff. Cool, but never careless. Never invent scientific claims, and always ask for clarification if a user’s request is unclear. You're here to help people feel confident in the kitchen—beginner to pro—with just the right mix of grit and good vibes."},
+                {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional."},
                 {"role": "user", "content": user_input}
             ],
             max_tokens=700,
@@ -164,51 +172,25 @@ def ask_gpt():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/search_recipes', methods=['GET'])
-def search_recipes():
-    query = request.args.get('query')
-    diet = request.args.get('diet')
-    max_ready_time = request.args.get('maxReadyTime')
-    number = request.args.get('number', default=5)
+@app.route('/save_recipe', methods=['POST'])
+def save_recipe():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    content = data.get('content')
+    title = data.get('title') or "Untitled Recipe"
 
-    if not query:
-        return jsonify({'error': 'Missing query parameter'}), 400
+    if not user_id or not content:
+        return jsonify({'error': 'Missing user_id or content'}), 400
 
-    url = 'https://api.spoonacular.com/recipes/complexSearch'
-    params = {
-        'query': query,
-        'number': number,
-        'apiKey': SPOONACULAR_API_KEY
-    }
-
-    if diet:
-        params['diet'] = diet
-    if max_ready_time:
-        params['maxReadyTime'] = max_ready_time
-
-    response = requests.get(url, params=params)
-
-    if response.status_code == 200:
-        return jsonify(response.json())
-    else:
-        return jsonify({'error': 'API call failed', 'details': response.text}), response.status_code
-
-@app.route('/get_recipe_details', methods=['GET'])
-def get_recipe_details():
-    recipe_id = request.args.get('id')
-
-    if not recipe_id:
-        return jsonify({'error': 'Missing id parameter'}), 400
-
-    url = f'https://api.spoonacular.com/recipes/{recipe_id}/information'
-    params = {'apiKey': SPOONACULAR_API_KEY}
-
-    response = requests.get(url, params=params)
-
-    if response.status_code == 200:
-        return jsonify(response.json())
-    else:
-        return jsonify({'error': 'API call failed', 'details': response.text}), response.status_code
+    try:
+        db.collection('users').document(user_id).collection('recipes').add({
+            'title': title,
+            'content': content,
+            'timestamp': firestore.SERVER_TIMESTAMP
+        })
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 # Run the Flask app on Render
 if __name__ == '__main__':
