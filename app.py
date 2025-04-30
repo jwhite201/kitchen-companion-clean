@@ -32,12 +32,12 @@ expanded_affiliate_links = {
         "keywords": ["rolling pin", "dough roller", "pastry roller"],
         "url": "https://amzn.to/3Gy1mQv"
     },
-    "6 inch pan": {
-        "keywords": ["6 inch pan", "six inch cake pan", "6\" cake pan"],
+    "6-inch pan": {
+        "keywords": ["6-inch pan", "six inch cake pan", "6\" cake pan"],
         "url": "https://amzn.to/4lRwo64"
     },
-    "9 inch pan": {
-        "keywords": ["9 inch pan", "nine inch cake pan", "9\" cake pan"],
+    "9-inch pan": {
+        "keywords": ["9-inch pan", "nine inch cake pan", "9\" cake pan"],
         "url": "https://amzn.to/42xSUtc"
     },
     "cake decorating": {
@@ -163,7 +163,7 @@ def ask_gpt():
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "You are The Kitchen Companion, a smart and helpful AI chef assistant. Always suggest healthy, realistic, and inspiring ideas. When suggesting tools or equipment, use specific names like 'mixer', 'scale', or 'cake pan' where appropriate."},
+                {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional. You ask smart questions, expect precise answers, and you’re not afraid to call it like it is. You’ve got that 'work hard, vibe harder' attitude: sharp when it matters, laid-back when it doesn’t. Whether you’re dialing in substitutions, walking someone through a recipe, or cracking a joke, keep it grounded, smart, and unbothered. Efficient, but never stiff. Cool, but never careless. Never invent scientific claims, and always ask for clarification if a user’s request is unclear. You're here to help people feel confident in the kitchen—beginner to pro—with just the right mix of grit and good vibes."},
                 {"role": "user", "content": user_input}
             ]
         )
