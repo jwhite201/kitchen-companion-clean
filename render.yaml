@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: kitchen-companion
+    env: python
+    buildCommand: ""
+    startCommand: python app.py
+    envVars:
+      - key: OPENAI_API_KEY
+        fromEnv: OPENAI_API_KEY
+      - key: SPOONACULAR_API_KEY
+        fromEnv: SPOONACULAR_API_KEY
