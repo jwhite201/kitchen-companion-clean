@@ -33,11 +33,11 @@ expanded_affiliate_links = {
         "url": "https://amzn.to/3Gy1mQv"
     },
     "6-inch pan": {
-        "keywords": ["6-inch pan", "six inch cake pan", "6\" cake pan"],
+        "keywords": ["6-inch pan", "6-inch" "six inch cake pan", "6\" cake pan"],
         "url": "https://amzn.to/4lRwo64"
     },
     "9-inch pan": {
-        "keywords": ["9-inch pan", "nine inch cake pan", "9\" cake pan"],
+        "keywords": ["9-inch", "9-inch pan", "nine inch cake pan", "9\" cake pan"],
         "url": "https://amzn.to/42xSUtc"
     },
     "cake decorating": {
@@ -100,7 +100,30 @@ expanded_affiliate_links = {
 
 # Function to inject conversational affiliate links based on keyword variants
 
-def add_affiliate_links_with_variants(response_text, product_map):
+import random
+import re
+
+def add_affiliate_links_inline(response_text, product_map):
+    lower_text = response_text.lower()
+    candidates = []
+
+    for product, data in product_map.items():
+        for keyword in data["keywords"]:
+            pattern = r'\b' + re.escape(keyword.lower()) + r's?\b'
+            if re.search(pattern, lower_text):
+                candidates.append((keyword, data["url"]))
+                break
+
+    if not candidates:
+        return response_text
+
+    chosen_keyword, url = random.choice(candidates)
+    pattern = re.compile(r'\b(' + re.escape(chosen_keyword) + r')\b', re.IGNORECASE)
+
+    def replacer(match):
+        return f"[{match.group(1)}]({url})"
+
+    return pattern.sub(replacer, response_text, count=1)
     recommendations = []
     lower_text = response_text.lower()
 
@@ -170,7 +193,7 @@ def ask_gpt():
         reply = response.choices[0].message.content
 
         # Inject affiliate links with better keyword matching
-        reply_with_links = add_affiliate_links_with_variants(reply, expanded_affiliate_links)
+        reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
 
         return jsonify({"reply": reply_with_links})
     except Exception as e:
