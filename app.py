@@ -9,32 +9,6 @@ from firebase_admin import credentials, firestore
 import re
 import random
 
-# Expanded affiliate links with keyword variants
-expanded_affiliate_links = {
-    "mixer": {"keywords": ["mixer", "stand mixer", "hand mixer", "electric mixer", "kitchen mixer"], "url": "https://amzn.to/44QqzQf"},
-    "mixing bowl": {"keywords": ["mixing bowl", "bowl", "baking bowl", "prep bowl"], "url": "https://amzn.to/3SepGJI"},
-    "measuring cup": {"keywords": ["measuring cup", "measuring cups", "measuring tools"], "url": "https://amzn.to/44h5HBt"},
-    "spatula": {"keywords": ["spatula", "rubber spatula", "silicone spatula"], "url": "https://amzn.to/4iILIiP"},
-    "scale": {"keywords": ["scale", "kitchen scale", "digital scale", "food scale"], "url": "https://amzn.to/4cUBs5t"},
-    "rolling pin": {"keywords": ["rolling pin", "dough roller", "pastry roller"], "url": "https://amzn.to/3Gy1mQv"},
-    "6-inch pan": {"keywords": ["6-inch pan", "6-inch", "six inch cake pan", "6\" cake pan"], "url": "https://amzn.to/4lRwo64"},
-    "9-inch pan": {"keywords": ["9-inch", "9-inch pan", "nine inch cake pan", "9\" cake pan"], "url": "https://amzn.to/42xSUtc"},
-    "cake decorating": {"keywords": ["cake decorating", "piping tips", "frosting tools", "decorating kit", "icing tools"], "url": "https://amzn.to/4lUd08m"},
-    "whisk": {"keywords": ["whisk", "balloon whisk", "wire whisk"], "url": "https://amzn.to/3GwiBlk"},
-    "bench scraper": {"keywords": ["bench scraper", "dough scraper", "pastry scraper"], "url": "https://amzn.to/3GzcuN2"},
-    "loaf pan": {"keywords": ["loaf pan", "bread pan"], "url": "https://amzn.to/42XzcpD"},
-    "almond flour": {"keywords": ["almond flour", "blanched almond flour"], "url": "https://amzn.to/4iCs3kx"},
-    "no sugar added chocolate chips": {"keywords": ["no sugar chocolate chips", "sugar-free chocolate chips", "healthy chocolate chips"], "url": "https://amzn.to/3SfqlKU"},
-    "monk fruit sweetener": {"keywords": ["monk fruit", "monk fruit sweetener", "monkfruit"], "url": "https://amzn.to/4cSRP2u"},
-    "coconut sugar": {"keywords": ["coconut sugar", "natural sugar"], "url": "https://amzn.to/42TZN6S"},
-    "whole wheat flour": {"keywords": ["whole wheat flour", "whole grain flour"], "url": "https://amzn.to/4jAbpmQ"},
-    "cake flour": {"keywords": ["cake flour", "soft wheat flour"], "url": "https://amzn.to/3YmwUz1"},
-    "silicone baking mat": {"keywords": ["silicone baking mat", "silpat", "nonstick baking mat"], "url": "https://amzn.to/4jJcRmI"},
-    "avocado oil": {"keywords": ["avocado oil", "healthy oil", "cooking oil"], "url": "https://amzn.to/3EwlK43"},
-    "digital thermometer": {"keywords": ["digital thermometer", "meat thermometer", "kitchen thermometer"], "url": "https://amzn.to/42SIDXr"},
-    "food storage containers": {"keywords": ["food storage", "meal prep containers", "storage containers"], "url": "https://amzn.to/4k1U7ip"}
-}
-
 # Load environment variables from .env
 load_dotenv()
 
@@ -51,30 +25,46 @@ CORS(app)
 
 # Initialize OpenAI client
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Function to inject one random affiliate link inline (fixed version)
+# Expanded affiliate links
+expanded_affiliate_links = {
+    "mixer": {"keywords": ["mixer", "stand mixer"], "url": "https://amzn.to/44QqzQf"},
+    "almond flour": {"keywords": ["almond flour"], "url": "https://amzn.to/4iCs3kx"},
+    "whisk": {"keywords": ["whisk"], "url": "https://amzn.to/3GwiBlk"},
+    # ... (keep all your current links here)
+}
+
 def add_affiliate_links_inline(response_text, product_map):
     lower_text = response_text.lower()
     candidates = []
-
     for product, data in product_map.items():
         for keyword in data["keywords"]:
             if keyword.lower() in lower_text:
                 candidates.append((keyword, data["url"]))
                 break
-
     if not candidates:
         return response_text
 
-    # Select up to 4 unique keywords
     selected = random.sample(candidates, min(4, len(candidates)))
-
     for keyword, url in selected:
         pattern = re.compile(rf'\b({re.escape(keyword)})\b', re.IGNORECASE)
         response_text = pattern.sub(f"[\\1]({url})", response_text, count=1)
-
     return response_text
+
+def get_spoonacular_image(query):
+    url = "https://api.spoonacular.com/recipes/complexSearch"
+    params = {"query": query, "number": 1, "apiKey": SPOONACULAR_API_KEY}
+    try:
+        res = requests.get(url, params=params)
+        res.raise_for_status()
+        data = res.json()
+        if data.get("results"):
+            return data["results"][0]["image"]
+    except Exception as e:
+        print(f"Spoonacular error: {e}")
+    return None
 
 @app.route('/')
 def home():
@@ -84,7 +74,7 @@ def home():
 def ask_gpt():
     data = request.get_json()
     messages = data.get('messages')
-    user_id = data.get('user_id')  # add this in frontend later
+    user_id = data.get('user_id')
 
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
@@ -99,14 +89,13 @@ def ask_gpt():
         except Exception as e:
             print(f"Error fetching preferences: {e}")
 
-    # Build a preferences prompt string
+    # Add preferences into last user message
     prefs_prompt = ""
     if user_preferences:
         prefs_list = [k for k, v in user_preferences.items() if v]
         if prefs_list:
             prefs_prompt = f" (user preferences: {', '.join(prefs_list)})"
 
-    # Inject preferences into the user message
     if messages[-1]['role'] == 'user':
         messages[-1]['content'] += prefs_prompt
 
@@ -119,7 +108,13 @@ def ask_gpt():
         )
         reply = response.choices[0].message.content
         reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
-        return jsonify({"reply": reply_with_links})
+
+        # Extract search keyword (last user message or fallback)
+        user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
+        search_query = user_message.split(' ')[-1]
+        image_url = get_spoonacular_image(search_query)
+
+        return jsonify({"reply": reply_with_links, "image_url": image_url})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
