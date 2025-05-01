@@ -73,16 +73,12 @@ def home():
 def ask_gpt():
     data = request.get_json()
     messages = data.get('messages')
-    user_id = data.get('user_id')
 
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
 
-    # Get last user message (full string)
-    user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
-
     try:
-        # Fetch GPT response
+        # Step 1: Chat response
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
             messages=messages,
@@ -90,21 +86,49 @@ def ask_gpt():
             temperature=0.7
         )
         reply = response.choices[0].message.content
-
-        # Add affiliate links
         reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
 
-        # Fetch Spoonacular image
+        # Step 2: Extract keyword
+        user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
+        search_query = user_message.split(' ')[-1]
+
+        # Step 3: Get recipe ID
         spoonacular_url = "https://api.spoonacular.com/recipes/complexSearch"
-        params = {'query': user_message, 'number': 1, 'apiKey': SPOONACULAR_API_KEY}
+        params = {'query': search_query, 'number': 1, 'apiKey': os.getenv("SPOONACULAR_API_KEY")}
         spoonacular_resp = requests.get(spoonacular_url, params=params)
         image_url = None
+        servings = None
+        ready_in_minutes = None
+        nutrition_facts = {}
+
         if spoonacular_resp.status_code == 200:
             results = spoonacular_resp.json()
             if results['results']:
-                image_url = results['results'][0]['image']
+                recipe_id = results['results'][0]['id']
 
-        return jsonify({"reply": reply_with_links, "image_url": image_url})
+                # Step 4: Get detailed recipe info
+                info_url = f"https://api.spoonacular.com/recipes/{recipe_id}/information"
+                info_params = {'includeNutrition': 'true', 'apiKey': os.getenv("SPOONACULAR_API_KEY")}
+                info_resp = requests.get(info_url, params=info_params)
+
+                if info_resp.status_code == 200:
+                    info = info_resp.json()
+                    image_url = info.get('image')
+                    servings = info.get('servings')
+                    ready_in_minutes = info.get('readyInMinutes')
+
+                    # Grab top 4 nutrients
+                    for nutrient in info.get('nutrition', {}).get('nutrients', [])[:4]:
+                        nutrition_facts[nutrient['name']] = f"{nutrient['amount']} {nutrient['unit']}"
+
+        return jsonify({
+            "reply": reply_with_links,
+            "image_url": image_url,
+            "servings": servings,
+            "ready_in_minutes": ready_in_minutes,
+            "nutrition_facts": nutrition_facts
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
