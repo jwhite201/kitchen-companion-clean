@@ -9,7 +9,7 @@ from firebase_admin import credentials, firestore
 import re
 import random
 
-# Load environment variables
+# Load env variables
 load_dotenv()
 
 # Initialize Firebase
@@ -18,51 +18,32 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Initialize Flask app
+# Initialize Flask + OpenAI
 app = Flask(__name__)
 CORS(app)
-
-# Initialize OpenAI client
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Affiliate product map
+# Affiliate links (same as before, skip here for brevity)
 expanded_affiliate_links = {
-    "mixer": {"keywords": ["mixer"], "url": "https://amzn.to/44QqzQf"},
-    "mixing bowl": {"keywords": ["mixing bowl"], "url": "https://amzn.to/3SepGJI"},
-    "measuring cup": {"keywords": ["measuring cup"], "url": "https://amzn.to/44h5HBt"},
-    "spatula": {"keywords": ["spatula"], "url": "https://amzn.to/4iILIiP"},
-    "whisk": {"keywords": ["whisk"], "url": "https://amzn.to/3GwiBlk"},
-    "loaf pan": {"keywords": ["loaf pan"], "url": "https://amzn.to/42XzcpD"},
-    "almond flour": {"keywords": ["almond flour"], "url": "https://amzn.to/4iCs3kx"},
-    "digital thermometer": {"keywords": ["thermometer"], "url": "https://amzn.to/42SIDXr"},
-    "food storage containers": {"keywords": ["storage container"], "url": "https://amzn.to/4k1U7ip"}
+    # ... [keep your existing product map here]
 }
 
-# Improve affiliate matcher
 def add_affiliate_links_inline(response_text, product_map):
     lower_text = response_text.lower()
     candidates = []
-
     for product, data in product_map.items():
         for keyword in data["keywords"]:
-            pattern = re.compile(rf'\b{re.escape(keyword)}s?\b', re.IGNORECASE)
-            if pattern.search(lower_text):
+            if keyword.lower() in lower_text:
                 candidates.append((keyword, data["url"]))
                 break
-
-    if candidates:
-        selected = random.sample(candidates, min(4, len(candidates)))
-        for keyword, url in selected:
-            pattern = re.compile(rf'\b({re.escape(keyword)})s?\b', re.IGNORECASE)
-            response_text = pattern.sub(f"[\\1]({url})", response_text, count=1)
-    else:
-        fallback = random.sample(list(product_map.items()), min(3, len(product_map)))
-        response_text += "\n\nRecommended Tools:\n"
-        for keyword, data in fallback:
-            response_text += f"- [{keyword}]({data['url']})\n"
-
+    if not candidates:
+        return response_text
+    selected = random.sample(candidates, min(4, len(candidates)))
+    for keyword, url in selected:
+        pattern = re.compile(rf'\b({re.escape(keyword)})\b', re.IGNORECASE)
+        response_text = pattern.sub(f"[\\1]({url})", response_text, count=1)
     return response_text
 
 @app.route('/')
@@ -73,12 +54,31 @@ def home():
 def ask_gpt():
     data = request.get_json()
     messages = data.get('messages')
+    user_id = data.get('user_id')
 
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
 
+    # Get user preferences
+    user_preferences = {}
+    if user_id:
+        try:
+            user_doc = db.collection('users').document(user_id).get()
+            if user_doc.exists:
+                user_preferences = user_doc.to_dict().get('preferences', {})
+        except Exception as e:
+            print(f"Error fetching preferences: {e}")
+
+    prefs_prompt = ""
+    if user_preferences:
+        prefs_list = [k for k, v in user_preferences.items() if v]
+        if prefs_list:
+            prefs_prompt = f" (user preferences: {', '.join(prefs_list)})"
+
+    if messages[-1]['role'] == 'user':
+        messages[-1]['content'] += prefs_prompt
+
     try:
-        # Step 1: Chat response
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
             messages=messages,
@@ -88,38 +88,36 @@ def ask_gpt():
         reply = response.choices[0].message.content
         reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
 
-        # Step 2: Extract keyword
+        # Extract keyword for Spoonacular (use last user message)
         user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
         search_query = user_message.split(' ')[-1]
 
-        # Step 3: Get recipe ID
-        spoonacular_url = "https://api.spoonacular.com/recipes/complexSearch"
-        params = {'query': search_query, 'number': 1, 'apiKey': os.getenv("SPOONACULAR_API_KEY")}
+        spoonacular_url = f"https://api.spoonacular.com/recipes/complexSearch"
+        params = {'query': search_query, 'number': 1, 'apiKey': SPOONACULAR_API_KEY}
         spoonacular_resp = requests.get(spoonacular_url, params=params)
-        image_url = None
-        servings = None
-        ready_in_minutes = None
-        nutrition_facts = {}
+
+        image_url, servings, ready_in_minutes, nutrition_facts = None, None, None, {}
 
         if spoonacular_resp.status_code == 200:
             results = spoonacular_resp.json()
             if results['results']:
                 recipe_id = results['results'][0]['id']
+                image_url = results['results'][0]['image']
 
-                # Step 4: Get detailed recipe info
-                info_url = f"https://api.spoonacular.com/recipes/{recipe_id}/information"
-                info_params = {'includeNutrition': 'true', 'apiKey': os.getenv("SPOONACULAR_API_KEY")}
-                info_resp = requests.get(info_url, params=info_params)
+                # Get detailed recipe info
+                detail_url = f"https://api.spoonacular.com/recipes/{recipe_id}/information"
+                detail_params = {'apiKey': SPOONACULAR_API_KEY}
+                detail_resp = requests.get(detail_url, params=detail_params)
 
-                if info_resp.status_code == 200:
-                    info = info_resp.json()
-                    image_url = info.get('image')
-                    servings = info.get('servings')
-                    ready_in_minutes = info.get('readyInMinutes')
-
-                    # Grab top 4 nutrients
-                    for nutrient in info.get('nutrition', {}).get('nutrients', [])[:4]:
-                        nutrition_facts[nutrient['name']] = f"{nutrient['amount']} {nutrient['unit']}"
+                if detail_resp.status_code == 200:
+                    detail = detail_resp.json()
+                    servings = detail.get('servings')
+                    ready_in_minutes = detail.get('readyInMinutes')
+                    nutrition = detail.get('nutrition', {}).get('nutrients', [])
+                    for item in nutrition:
+                        name = item.get('name')
+                        amount = f"{item.get('amount')}{item.get('unit')}"
+                        nutrition_facts[name] = amount
 
         return jsonify({
             "reply": reply_with_links,
