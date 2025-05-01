@@ -151,18 +151,15 @@ def home():
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
     data = request.get_json()
-    user_input = data.get('message')
+    messages = data.get('messages')  # now expecting a list of role/content pairs
 
-    if not user_input:
-        return jsonify({"error": "No message provided"}), 400
+    if not messages:
+        return jsonify({"error": "No messages provided"}), 400
 
     try:
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
-            messages=[
-                {"role": "system", "content": "You are The Kitchen Companion, a culinary-savvy bro with sharp instincts and chill energy. You're clear, direct, and no-nonsense—cut the crap and get to the point—but still thoughtful and intentional."},
-                {"role": "user", "content": user_input}
-            ],
+            messages=messages,
             max_tokens=700,
             temperature=0.7
         )
