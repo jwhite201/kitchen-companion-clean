@@ -60,21 +60,21 @@ def add_affiliate_links_inline(response_text, product_map):
 
     for product, data in product_map.items():
         for keyword in data["keywords"]:
-            pattern = r'\b' + re.escape(keyword.lower()) + r'\b'
-            if re.search(pattern, lower_text):
+            if keyword.lower() in lower_text:
                 candidates.append((keyword, data["url"]))
                 break
 
     if not candidates:
         return response_text
 
-    chosen_keyword, url = random.choice(candidates)
-    pattern = re.compile(re.escape(chosen_keyword), re.IGNORECASE)
+    # Select up to 4 unique keywords
+    selected = random.sample(candidates, min(4, len(candidates)))
 
-    def replacer(match):
-        return f"[{match.group(0)}]({url})"
+    for keyword, url in selected:
+        pattern = re.compile(rf'\b({re.escape(keyword)})\b', re.IGNORECASE)
+        response_text = pattern.sub(f"[\\1]({url})", response_text, count=1)
 
-    return pattern.sub(replacer, response_text, count=1)
+    return response_text
 
 @app.route('/')
 def home():
@@ -83,10 +83,32 @@ def home():
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
     data = request.get_json()
-    messages = data.get('messages')  # now expecting a list of role/content pairs
+    messages = data.get('messages')
+    user_id = data.get('user_id')  # add this in frontend later
 
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
+
+    # Fetch user preferences
+    user_preferences = {}
+    if user_id:
+        try:
+            user_doc = db.collection('users').document(user_id).get()
+            if user_doc.exists:
+                user_preferences = user_doc.to_dict().get('preferences', {})
+        except Exception as e:
+            print(f"Error fetching preferences: {e}")
+
+    # Build a preferences prompt string
+    prefs_prompt = ""
+    if user_preferences:
+        prefs_list = [k for k, v in user_preferences.items() if v]
+        if prefs_list:
+            prefs_prompt = f" (user preferences: {', '.join(prefs_list)})"
+
+    # Inject preferences into the user message
+    if messages[-1]['role'] == 'user':
+        messages[-1]['content'] += prefs_prompt
 
     try:
         response = openai_client.chat.completions.create(
