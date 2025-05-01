@@ -101,7 +101,7 @@ expanded_affiliate_links = {
     }
 }
 
-}
+
 
 # Load environment variables from .env
 load_dotenv()
