@@ -1,4 +1,4 @@
-altgraph @ file:///AppleInternal/Library/BuildRoots/bcce998f-ff34-11ef-9d34-f2a857e00a32/Library/Caches/com.apple.xbs/Sources/python3/altgraph-0.17.2-py2.py3-none-any.whl
+
 annotated-types==0.7.0
 anyio==4.9.0
 blinker==1.9.0
@@ -14,7 +14,6 @@ exceptiongroup==1.2.2
 firebase-admin==6.8.0
 Flask==3.1.0
 flask-cors==5.0.1
-future @ file:///AppleInternal/Library/BuildRoots/bcce998f-ff34-11ef-9d34-f2a857e00a32/Library/Caches/com.apple.xbs/Sources/python3/future-0.18.2-py3-none-any.whl
 google-api-core==2.24.2
 google-api-python-client==2.169.0
 google-auth==2.39.0
