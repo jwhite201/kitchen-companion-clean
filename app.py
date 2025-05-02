@@ -48,6 +48,12 @@ def add_affiliate_links(text):
             added += 1
     return text
 
+def extract_ingredients(text):
+    lines = text.split('\n')
+    ingredients = [re.sub(r'- [\d/]+\s*(cup|oz|g|ml|tbsp|tsp)?\s*', '', l, flags=re.IGNORECASE).strip()
+                   for l in lines if l.startswith('- ')]
+    return list(set(ingredients))
+
 @app.route('/')
 def home():
     return jsonify({"message": "Kitchen Companion backend is live!"})
@@ -69,7 +75,6 @@ def ask_gpt():
         )
         reply = gpt_response.choices[0].message.content
         reply = add_affiliate_links(reply)
-
         title_line = f"🍽️ Recipe: {user_message.title()}\n\n"
         reply = title_line + reply
 
@@ -88,12 +93,15 @@ def ask_gpt():
                 servings = item.get('servings')
                 time = item.get('readyInMinutes')
 
+        ingredients = extract_ingredients(reply)
+
         return jsonify({
             "reply": reply,
             "image_url": image_url,
             "nutrition": nutrition,
             "servings": servings,
-            "time": time
+            "time": time,
+            "ingredients": ingredients
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -120,6 +128,26 @@ def get_recipes():
         r['id'] = doc.id
         recipes.append(r)
     return jsonify(recipes)
+
+@app.route('/update_pantry', methods=['POST'])
+def update_pantry():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    pantry_items = data.get('pantry')
+    if not user_id or pantry_items is None:
+        return jsonify({"error": "Missing user_id or pantry"}), 400
+    db.collection('users').document(user_id).update({'pantry': pantry_items})
+    return jsonify({"status": "Pantry updated"})
+
+@app.route('/update_grocery_list', methods=['POST'])
+def update_grocery_list():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    grocery_items = data.get('grocery_list')
+    if not user_id or grocery_items is None:
+        return jsonify({"error": "Missing user_id or grocery_list"}), 400
+    db.collection('users').document(user_id).update({'grocery_list': grocery_items})
+    return jsonify({"status": "Grocery list updated"})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
