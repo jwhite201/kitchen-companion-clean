@@ -11,7 +11,6 @@ import random
 
 load_dotenv()
 
-# Initialize Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate("firebase-service-account.json")
     firebase_admin.initialize_app(cred)
@@ -24,7 +23,6 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Affiliate links
 affiliate_links = {
     "mixer": "https://amzn.to/44QqzQf", "mixing bowl": "https://amzn.to/3SepGJI",
     "measuring cup": "https://amzn.to/44h5HBt", "spatula": "https://amzn.to/4iILIiP",
@@ -46,15 +44,14 @@ affiliate_links = {
 def add_affiliate_links(text):
     added = 0
     for keyword, url in affiliate_links.items():
-        pattern = rf"\b({re.escape(keyword)})\b"
-        if re.search(pattern, text, re.IGNORECASE) and added < 4:
-            text = re.sub(pattern, f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
+        if re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE) and added < 4:
+            text = re.sub(rf"\b({re.escape(keyword)})\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
             added += 1
     return text
 
 @app.route('/')
 def home():
-    return "Kitchen Companion backend is running!"
+    return jsonify({"message": "Kitchen Companion backend is live!"})
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
@@ -109,15 +106,18 @@ def save_recipe():
     db.collection('users').document(user_id).collection('recipes').add(recipe)
     return jsonify({"status": "Recipe saved"})
 
-@app.route('/save_grocery_list', methods=['POST'])
-def save_grocery_list():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    grocery_list = data.get('grocery_list')
-    if not user_id or not grocery_list:
-        return jsonify({"error": "Missing user_id or grocery_list"}), 400
-    db.collection('users').document(user_id).collection('grocery_lists').add({"items": grocery_list})
-    return jsonify({"status": "Grocery list saved"})
+@app.route('/get_recipes', methods=['GET'])
+def get_recipes():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+    recipes = []
+    docs = db.collection('users').document(user_id).collection('recipes').stream()
+    for doc in docs:
+        r = doc.to_dict()
+        r['id'] = doc.id
+        recipes.append(r)
+    return jsonify(recipes)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
