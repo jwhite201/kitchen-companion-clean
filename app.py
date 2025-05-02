@@ -149,6 +149,36 @@ def update_grocery_list():
     db.collection('users').document(user_id).update({'grocery_list': grocery_items})
     return jsonify({"status": "Grocery list updated"})
 
+@app.route('/save_pantry', methods=['POST'])
+def save_pantry():
+    data = request.get_json()
+    user_id = data.get('user_id')
+    pantry = data.get('pantry')
+    if not user_id or pantry is None:
+        return jsonify({"error": "Missing user_id or pantry"}), 400
+    db.collection('users').document(user_id).set({'pantry': pantry}, merge=True)
+    return jsonify({"status": "Pantry saved"})
+
+@app.route('/get_pantry', methods=['GET'])
+def get_pantry():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+    doc = db.collection('users').document(user_id).get()
+    pantry = doc.to_dict().get('pantry', []) if doc.exists else []
+    return jsonify({"pantry": pantry})
+
+@app.route('/get_recipe_detail', methods=['GET'])
+def get_recipe_detail():
+    user_id = request.args.get('user_id')
+    recipe_id = request.args.get('recipe_id')
+    if not user_id or not recipe_id:
+        return jsonify({"error": "Missing user_id or recipe_id"}), 400
+    doc = db.collection('users').document(user_id).collection('recipes').document(recipe_id).get()
+    if not doc.exists:
+        return jsonify({"error": "Recipe not found"}), 404
+    return jsonify(doc.to_dict())
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
