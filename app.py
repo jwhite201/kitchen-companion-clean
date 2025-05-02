@@ -66,6 +66,17 @@ def ask_gpt():
         return jsonify({"error": "No messages provided"}), 400
 
     user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
+
+    system_prompt = {
+    "role": "system",
+    "content": (
+        "You are a master chef. When asked for a recipe, always return the full recipe "
+        "with ingredients and instructions. If the user asks for a description, explanation, "
+        "or flavor profile of a dish, provide that as well. Do not return generic definitions "
+        "unless specifically asked."
+    )
+}
+    messages.insert(0, system_prompt)
     try:
         gpt_response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
