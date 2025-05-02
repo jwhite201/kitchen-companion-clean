@@ -70,13 +70,12 @@ def ask_gpt():
         reply = gpt_response.choices[0].message.content
         reply = add_affiliate_links(reply)
 
-        # Extract main keyword (e.g., 'cookies') by taking first food word
-        query_word = re.findall(r'\b[cC]ookies|\b[cC]ake|\b[pP]asta|\b[sS]oup|\b[sS]alad', user_message)
-        recipe_query = query_word[0] if query_word else "recipe"
+        title_line = f"🍽️ Recipe: {user_message.title()}\n\n"
+        reply = title_line + reply
 
         spoonacular_resp = requests.get(
             "https://api.spoonacular.com/recipes/complexSearch",
-            params={'query': recipe_query, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
+            params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
         )
 
         image_url, nutrition, servings, time = None, None, None, None
