@@ -9,144 +9,100 @@ from firebase_admin import credentials, firestore
 import re
 import random
 
-# Load env variables
 load_dotenv()
 
-# Initialize Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate("firebase-service-account.json")
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Initialize Flask app
 app = Flask(__name__)
 CORS(app)
 
-# Initialize OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Affiliate links
 expanded_affiliate_links = {
-    "mixer": {"keywords": ["mixer", "stand mixer"], "url": "https://amzn.to/44QqzQf"},
-    "almond flour": {"keywords": ["almond flour"], "url": "https://amzn.to/4iCs3kx"},
-    "cake pan": {"keywords": ["cake pan", "9-inch pan"], "url": "https://amzn.to/42xSUtc"},
+    "mixer": {"keywords": ["mixer"], "url": "https://amzn.to/44QqzQf"},
+    "mixing bowl": {"keywords": ["mixing bowl"], "url": "https://amzn.to/3SepGJI"},
+    "measuring cup": {"keywords": ["measuring cup"], "url": "https://amzn.to/44h5HBt"},
     "spatula": {"keywords": ["spatula"], "url": "https://amzn.to/4iILIiP"},
+    "scale": {"keywords": ["scale"], "url": "https://amzn.to/4cUBs5t"},
+    "rolling pin": {"keywords": ["rolling pin"], "url": "https://amzn.to/3Gy1mQv"},
+    "6 inch pan": {"keywords": ["6 inch pan"], "url": "https://amzn.to/4lRwo64"},
+    "9 inch pan": {"keywords": ["9 inch pan"], "url": "https://amzn.to/42xSUtc"},
+    "cake decorating": {"keywords": ["cake decorating"], "url": "https://amzn.to/4lUd08m"},
+    "whisk": {"keywords": ["whisk"], "url": "https://amzn.to/3GwiBlk"},
+    "bench scraper": {"keywords": ["bench scraper"], "url": "https://amzn.to/3GzcuN2"},
+    "loaf pan": {"keywords": ["loaf pan"], "url": "https://amzn.to/42XzcpD"},
+    "almond flour": {"keywords": ["almond flour"], "url": "https://amzn.to/4iCs3kx"},
+    "no sugar added chocolate chips": {"keywords": ["no sugar chocolate chips"], "url": "https://amzn.to/3SfqlKU"},
+    "monk fruit sweetener": {"keywords": ["monk fruit"], "url": "https://amzn.to/4cSRP2u"},
+    "coconut sugar": {"keywords": ["coconut sugar"], "url": "https://amzn.to/42TZN6S"},
+    "whole wheat flour": {"keywords": ["whole wheat flour"], "url": "https://amzn.to/4jAbpmQ"},
+    "cake flour": {"keywords": ["cake flour"], "url": "https://amzn.to/3YmwUz1"},
+    "silicone baking mat": {"keywords": ["silicone baking mat"], "url": "https://amzn.to/4jJcRmI"},
+    "avocado oil": {"keywords": ["avocado oil"], "url": "https://amzn.to/3EwlK43"},
+    "digital thermometer": {"keywords": ["digital thermometer"], "url": "https://amzn.to/42SIDXr"},
+    "food storage containers": {"keywords": ["food storage containers"], "url": "https://amzn.to/4k1U7ip"},
+    "baking sheet": {"keywords": ["baking sheet"], "url": "https://amzn.to/44ijPdO"},
+    "hand mixer": {"keywords": ["hand mixer"], "url": "https://amzn.to/437UVwi"},
+    "wire racks": {"keywords": ["wire racks"], "url": "https://amzn.to/42Rghg3"},
+    "cookie scoop": {"keywords": ["cookie scoop"], "url": "https://amzn.to/3EH8Yjd"},
+    "food processor": {"keywords": ["food processor"], "url": "https://amzn.to/4iLcbvY"},
+    "matcha": {"keywords": ["matcha"], "url": "https://amzn.to/4d0bGwL"},
+    "cocoa powder": {"keywords": ["cocoa powder"], "url": "https://amzn.to/42WB3Lp"}
 }
 
-def add_affiliate_links_inline(text, product_map):
-    lower = text.lower()
-    added = 0
+def add_affiliate_links(text, product_map):
     for product, data in product_map.items():
-        for kw in data["keywords"]:
-            if kw in lower and added < 4:
-                text = re.sub(rf"\b({kw})\b", f"[\\1]({data['url']})", text, flags=re.IGNORECASE)
-                added += 1
-                break
+        for keyword in data["keywords"]:
+            pattern = re.compile(rf'\b({keyword})\b', re.IGNORECASE)
+            text = pattern.sub(f"[\\1]({data['url']})", text)
     return text
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
     data = request.get_json()
     messages = data.get('messages')
-    user_id = data.get('user_id')
-
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
 
     try:
-        # Get pantry items
-        pantry_items = []
-        if user_id:
-            pantry_doc = db.collection('users').document(user_id).get()
-            if pantry_doc.exists:
-                pantry_items = pantry_doc.to_dict().get('pantry', [])
-
-        # Get GPT response
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
             messages=messages,
             max_tokens=700,
             temperature=0.7
         )
-        reply = response.choices[0].message.content
-        reply_with_links = add_affiliate_links_inline(reply, expanded_affiliate_links)
+        gpt_reply = response.choices[0].message.content
+        reply_with_links = add_affiliate_links(gpt_reply, expanded_affiliate_links)
 
-        # Extract recipe keyword
-        user_msg = [m['content'] for m in messages if m['role'] == 'user'][-1]
-        recipe_query = re.findall(r'\b[a-zA-Z ]+\b', user_msg)[-1].strip()
+        recipe_match = re.search(r'(?i)(?:recipe for|make|cook)\s+([a-zA-Z\s]+)', gpt_reply)
+        recipe_query = recipe_match.group(1).strip() if recipe_match else 'chocolate chip cookies'
 
-        # Get Spoonacular recipe details
-        spoonacular_url = "https://api.spoonacular.com/recipes/complexSearch"
-        params = {
-            'query': recipe_query,
-            'number': 1,
-            'addRecipeNutrition': True,
-            'apiKey': SPOONACULAR_API_KEY
-        }
+        spoonacular_url = f"https://api.spoonacular.com/recipes/complexSearch"
+        params = {'query': recipe_query, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
         spoonacular_resp = requests.get(spoonacular_url, params=params)
-        image_url, ingredients, nutrition, servings, time = None, [], None, None, None
+
+        image_url, nutrition, servings, time = None, None, None, None
         if spoonacular_resp.status_code == 200:
             results = spoonacular_resp.json().get('results', [])
             if results:
                 r = results[0]
                 image_url = r.get('image')
-                ingredients = [ing['name'] for ing in r.get('nutrition', {}).get('ingredients', [])]
                 nutrition = r.get('nutrition', {}).get('nutrients', [])
                 servings = r.get('servings')
                 time = r.get('readyInMinutes')
 
-        # Compare pantry vs needed ingredients
-        missing_items = [ing for ing in ingredients if ing.lower() not in [p.lower() for p in pantry_items]]
-
-        # Generate shopping links
-        missing_query = ",".join(missing_items)
-        instacart_link = f"https://www.instacart.com/store/checkout_v3?term={missing_query}" if missing_items else ""
-        amazon_link = f"https://www.amazon.com/s?k={missing_query}" if missing_items else ""
-
         return jsonify({
             "reply": reply_with_links,
             "image_url": image_url,
-            "ingredients": ingredients,
             "nutrition": nutrition,
             "servings": servings,
-            "time": time,
-            "missing_items": missing_items,
-            "instacart_link": instacart_link,
-            "amazon_link": amazon_link
+            "time": time
         })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/save_pantry', methods=['POST'])
-def save_pantry():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    pantry = data.get('pantry', [])
-
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-
-    try:
-        db.collection('users').document(user_id).set({'pantry': pantry}, merge=True)
-        return jsonify({"status": "Pantry saved successfully"})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/get_pantry', methods=['GET'])
-def get_pantry():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-
-    try:
-        pantry_doc = db.collection('users').document(user_id).get()
-        if pantry_doc.exists:
-            return jsonify({"pantry": pantry_doc.to_dict().get('pantry', [])})
-        else:
-            return jsonify({"pantry": []})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
