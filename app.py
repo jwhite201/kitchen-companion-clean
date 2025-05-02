@@ -9,7 +9,7 @@ from firebase_admin import credentials, firestore
 import re
 import random
 
-# Load environment variables
+# Load env variables
 load_dotenv()
 
 # Initialize Firebase
@@ -22,7 +22,7 @@ db = firestore.client()
 app = Flask(__name__)
 CORS(app)
 
-# Initialize OpenAI client
+# Initialize OpenAI
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -38,20 +38,12 @@ expanded_affiliate_links = {
 def add_affiliate_links_inline(text, product_map):
     lower = text.lower()
     added = 0
-    links = []
     for product, data in product_map.items():
-        matched = False
         for kw in data["keywords"]:
             if kw in lower and added < 4:
                 text = re.sub(rf"\b({kw})\b", f"[\\1]({data['url']})", text, flags=re.IGNORECASE)
                 added += 1
-                matched = True
                 break
-        if not matched and added < 4:
-            links.append(f"[{product}]({data['url']})")
-            added += 1
-    if links:
-        text += "\n\nRecommended tools:\n" + ", ".join(links)
     return text
 
 @app.route('/ask_gpt', methods=['POST'])
@@ -63,18 +55,15 @@ def ask_gpt():
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
 
-    # Get user pantry from Firestore
-    pantry_items = []
-    if user_id:
-        try:
-            doc = db.collection('users').document(user_id).get()
-            if doc.exists:
-                pantry_items = doc.to_dict().get('pantry', [])
-        except Exception as e:
-            print(f"Error fetching pantry: {e}")
-
     try:
-        # Generate recipe from GPT
+        # Get pantry items
+        pantry_items = []
+        if user_id:
+            pantry_doc = db.collection('users').document(user_id).get()
+            if pantry_doc.exists:
+                pantry_items = pantry_doc.to_dict().get('pantry', [])
+
+        # Get GPT response
         response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo-1106",
             messages=messages,
@@ -88,7 +77,7 @@ def ask_gpt():
         user_msg = [m['content'] for m in messages if m['role'] == 'user'][-1]
         recipe_query = re.findall(r'\b[a-zA-Z ]+\b', user_msg)[-1].strip()
 
-        # Call Spoonacular API
+        # Get Spoonacular recipe details
         spoonacular_url = "https://api.spoonacular.com/recipes/complexSearch"
         params = {
             'query': recipe_query,
@@ -97,54 +86,69 @@ def ask_gpt():
             'apiKey': SPOONACULAR_API_KEY
         }
         spoonacular_resp = requests.get(spoonacular_url, params=params)
-
-        image_url, nutrition, servings, time, recipe_ingredients = None, None, None, None, []
-        missing_ingredients = []
-
+        image_url, ingredients, nutrition, servings, time = None, [], None, None, None
         if spoonacular_resp.status_code == 200:
             results = spoonacular_resp.json().get('results', [])
             if results:
                 r = results[0]
                 image_url = r.get('image')
+                ingredients = [ing['name'] for ing in r.get('nutrition', {}).get('ingredients', [])]
                 nutrition = r.get('nutrition', {}).get('nutrients', [])
                 servings = r.get('servings')
                 time = r.get('readyInMinutes')
 
-                # Optional: simulate ingredients list
-                recipe_ingredients = [i['name'] for i in r.get('nutrition', {}).get('ingredients', [])]
-                # fallback if no ingredients provided
-                if not recipe_ingredients:
-                    recipe_ingredients = ["flour", "sugar", "butter", "eggs"]
+        # Compare pantry vs needed ingredients
+        missing_items = [ing for ing in ingredients if ing.lower() not in [p.lower() for p in pantry_items]]
 
-                # Check what's missing from pantry
-                missing_ingredients = [item for item in recipe_ingredients if item.lower() not in [p.lower() for p in pantry_items]]
+        # Generate shopping links
+        missing_query = ",".join(missing_items)
+        instacart_link = f"https://www.instacart.com/store/checkout_v3?term={missing_query}" if missing_items else ""
+        amazon_link = f"https://www.amazon.com/s?k={missing_query}" if missing_items else ""
 
         return jsonify({
             "reply": reply_with_links,
             "image_url": image_url,
+            "ingredients": ingredients,
             "nutrition": nutrition,
             "servings": servings,
             "time": time,
-            "missing_ingredients": missing_ingredients
+            "missing_items": missing_items,
+            "instacart_link": instacart_link,
+            "amazon_link": amazon_link
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/update_pantry', methods=['POST'])
-def update_pantry():
+@app.route('/save_pantry', methods=['POST'])
+def save_pantry():
     data = request.get_json()
     user_id = data.get('user_id')
-    pantry_items = data.get('pantry_items')
+    pantry = data.get('pantry', [])
 
-    if not user_id or pantry_items is None:
-        return jsonify({'error': 'Missing user_id or pantry_items'}), 400
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
 
     try:
-        db.collection('users').document(user_id).set({'pantry': pantry_items}, merge=True)
-        return jsonify({'status': 'success'})
+        db.collection('users').document(user_id).set({'pantry': pantry}, merge=True)
+        return jsonify({"status": "Pantry saved successfully"})
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/get_pantry', methods=['GET'])
+def get_pantry():
+    user_id = request.args.get('user_id')
+    if not user_id:
+        return jsonify({"error": "Missing user_id"}), 400
+
+    try:
+        pantry_doc = db.collection('users').document(user_id).get()
+        if pantry_doc.exists:
+            return jsonify({"pantry": pantry_doc.to_dict().get('pantry', [])})
+        else:
+            return jsonify({"pantry": []})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
