@@ -68,14 +68,14 @@ def ask_gpt():
     user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
 
     system_prompt = {
-    "role": "system",
-    "content": (
-        "You are a master chef. When asked for a recipe, always return the full recipe "
-        "with ingredients and instructions. If the user asks for a description, explanation, "
-        "or flavor profile of a dish, provide that as well. Do not return generic definitions "
-        "unless specifically asked."
-    )
-}
+        "role": "system",
+        "content": (
+            "You are a master chef and expert assistant. By default, always return full recipes "
+            "including ingredients and step-by-step instructions when the user asks for a dish. "
+            "However, if the user specifically asks for a description, explanation, or background, "
+            "provide that instead. Avoid sending only definitions unless asked."
+        )
+    }
     messages.insert(0, system_prompt)
     try:
         gpt_response = openai_client.chat.completions.create(
