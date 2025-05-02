@@ -11,15 +11,15 @@ import random
 
 load_dotenv()
 
-# Firebase setup
+# Initialize Firebase
 if not firebase_admin._apps:
     cred = credentials.Certificate("firebase-service-account.json")
     firebase_admin.initialize_app(cred)
 db = firestore.client()
 
-# Flask + API keys
 app = Flask(__name__)
 CORS(app)
+
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
 openai_client = OpenAI(api_key=OPENAI_API_KEY)
@@ -46,10 +46,15 @@ affiliate_links = {
 def add_affiliate_links(text):
     added = 0
     for keyword, url in affiliate_links.items():
-        if re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE) and added < 4:
-            text = re.sub(rf"\b({re.escape(keyword)})\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
+        pattern = rf"\b({re.escape(keyword)})\b"
+        if re.search(pattern, text, re.IGNORECASE) and added < 4:
+            text = re.sub(pattern, f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
             added += 1
     return text
+
+@app.route('/')
+def home():
+    return "Kitchen Companion backend is running!"
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
