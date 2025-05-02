@@ -7,7 +7,6 @@ from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 import re
-import random
 
 load_dotenv()
 
@@ -71,11 +70,11 @@ def ask_gpt():
         reply = gpt_response.choices[0].message.content
         reply = add_affiliate_links(reply)
 
+        # Spoonacular
         spoonacular_resp = requests.get(
             "https://api.spoonacular.com/recipes/complexSearch",
             params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
         )
-
         image_url, nutrition, servings, time = None, None, None, None
         if spoonacular_resp.status_code == 200:
             res = spoonacular_resp.json()
@@ -86,12 +85,20 @@ def ask_gpt():
                 servings = item.get('servings')
                 time = item.get('readyInMinutes')
 
+        # Fetch pantry from test_user
+        user_doc = db.collection('users').document('test_user').get()
+        pantry = user_doc.to_dict().get('pantry', []) if user_doc.exists else []
+
+        # Determine missing items
+        missing_items = [item for item in pantry if item.lower() not in reply.lower()]
+
         return jsonify({
             "reply": reply,
             "image_url": image_url,
             "nutrition": nutrition,
             "servings": servings,
-            "time": time
+            "time": time,
+            "missing_items": missing_items
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
