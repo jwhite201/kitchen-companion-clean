@@ -151,6 +151,21 @@ def get_recipes():
         recipes.append(r)
     return jsonify(recipes)
 
+@app.route('/delete_recipe', methods=['DELETE'])
+def delete_recipe():
+    user_id = request.args.get('user_id')
+    recipe_id = request.args.get('recipe_id')
+
+    if not user_id or not recipe_id:
+        return jsonify({'error': 'Missing user_id or recipe_id'}), 400
+
+    recipe_ref = db.collection('users').document(user_id).collection('recipes').document(recipe_id)
+    if not recipe_ref.get().exists:
+        return jsonify({'error': 'Recipe not found'}), 404
+
+    recipe_ref.delete()
+    return jsonify({'message': 'Recipe deleted successfully'}), 200
+
 @app.route('/update_pantry', methods=['POST'])
 def update_pantry():
     data = request.get_json()
