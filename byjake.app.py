@@ -218,11 +218,13 @@ def get_recipes():
 
 @app.route('/delete_recipe', methods=['DELETE'])
 def delete_recipe():
-    user_id = request.args.get('user_id')
-    recipe_id = request.args.get('recipe_id')
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
 
-    if not user_id or not recipe_id:
-        return jsonify({'error': 'Missing user_id or recipe_id'}), 400
+    recipe_id = request.args.get('recipe_id')
+    if not recipe_id:
+        return jsonify({'error': 'Missing recipe_id'}), 400
 
     recipe_ref = db.collection('users').document(user_id).collection('recipes').document(recipe_id)
     if not recipe_ref.get().exists:
@@ -231,69 +233,44 @@ def delete_recipe():
     recipe_ref.delete()
     return jsonify({'message': 'Recipe deleted successfully'}), 200
 
-@app.route('/update_pantry', methods=['POST'])
-def update_pantry():
-    try:
-        user_id = verify_firebase_token()
-        if not user_id:
-            return jsonify({"error": "Unauthorized"}), 401
-
-        data = request.get_json()
-        pantry_items = data.get('pantry')
-        if pantry_items is None:
-            logger.error("Missing pantry in update_pantry request")
-            return jsonify({"error": "Missing pantry"}), 400
-        
-        logger.info(f"Updating pantry for user: {user_id}")
-        db.collection('users').document(user_id).update({'pantry': pantry_items})
-        logger.info("Pantry updated successfully")
-        return jsonify({"status": "Pantry updated"})
-    except Exception as e:
-        logger.error(f"Error in update_pantry: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/update_grocery_list', methods=['POST'])
 def update_grocery_list():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
-    user_id = data.get('user_id')
     grocery_items = data.get('grocery_list')
-    if not user_id or grocery_items is None:
-        return jsonify({"error": "Missing user_id or grocery_list"}), 400
+    if grocery_items is None:
+        return jsonify({"error": "Missing grocery_list"}), 400
+
     db.collection('users').document(user_id).update({'grocery_list': grocery_items})
     return jsonify({"status": "Grocery list updated"})
 
 @app.route('/save_pantry', methods=['POST'])
 def save_pantry():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     data = request.get_json()
-    user_id = data.get('user_id')
     pantry = data.get('pantry')
-    if not user_id or pantry is None:
-        return jsonify({"error": "Missing user_id or pantry"}), 400
+    if pantry is None:
+        return jsonify({"error": "Missing pantry"}), 400
+
     db.collection('users').document(user_id).set({'pantry': pantry}, merge=True)
     return jsonify({"status": "Pantry saved"})
 
-@app.route('/get_pantry', methods=['GET'])
-def get_pantry():
-    try:
-        user_id = verify_firebase_token()
-        if not user_id:
-            return jsonify({"error": "Unauthorized"}), 401
-
-        logger.info(f"Fetching pantry for user: {user_id}")
-        doc = db.collection('users').document(user_id).get()
-        pantry = doc.to_dict().get('pantry', []) if doc.exists else []
-        logger.info(f"Successfully fetched pantry with {len(pantry)} items")
-        return jsonify({"pantry": pantry})
-    except Exception as e:
-        logger.error(f"Error in get_pantry: {str(e)}")
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/get_recipe_detail', methods=['GET'])
 def get_recipe_detail():
-    user_id = request.args.get('user_id')
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
     recipe_id = request.args.get('recipe_id')
-    if not user_id or not recipe_id:
-        return jsonify({"error": "Missing user_id or recipe_id"}), 400
+    if not recipe_id:
+        return jsonify({"error": "Missing recipe_id"}), 400
+
     doc = db.collection('users').document(user_id).collection('recipes').document(recipe_id).get()
     if not doc.exists:
         return jsonify({"error": "Recipe not found"}), 404
