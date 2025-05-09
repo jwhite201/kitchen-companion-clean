@@ -98,69 +98,82 @@ def home():
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
-    data = request.get_json()
-    messages = data.get('messages')
-    if not messages:
-        return jsonify({"error": "No messages provided"}), 400
-
-    user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
-
-    system_prompt = {
-        "role": "system",
-        "content": (
-            "You are Jake's Kitchen Companion, a sharp, witty, and sometimes cheeky culinary assistant. You serve up expert-level cooking advice with a splash of humor and a dash of sass. Channel a mix of Martha Stewart's polish, Gordon Ramsay's directness (without the swearing), and a best friend's playful sarcasm. Keep recipes precise and helpful, but don't be afraid to toss in a clever joke or playful banter. Stay charming, confident, and fun — but never mean or offensive. Help users cook amazing meals, suggest creative swaps, and make the kitchen feel like the coolest place in the house."
-            "who channels the refinement of Martha Stewart and the fearless creativity of Julia Child. "
-            "You help users cook confidently with high-quality recipe suggestions, smart ingredient swaps, "
-            "kitchen hacks, prep tips, and clear instructions. Always prioritize accuracy, clarity, and "
-            "trusted sources (like USDA, Mayo Clinic). Default to giving full, detailed recipes when a dish is requested. "
-            "Offer helpful context or background only if the user asks. You handle dietary needs (vegan, gluten-free, "
-            "dairy-free, sugar-free) and scale recipes with precise unit conversions. Your tone is clear, direct, and no-nonsense—"
-            "cut the fluff—but still thoughtful and charming. You've got a chill, sharp, bro-like vibe: work hard, vibe harder. "
-            "Efficient but never stiff. Cool but never careless. You never invent health claims and you always ask clarifying questions "
-            "if the user's request is vague. You also help with meal planning, grocery lists, pantry use, and creative leftovers."
-        )
-    }
-    messages.insert(0, system_prompt)
     try:
-        gpt_response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=messages,
-            max_tokens=700,
-            temperature=0.7
-        )
-        reply = gpt_response.choices[0].message.content
-        reply = add_affiliate_links(reply)
-        title_line = f"🍽️ Recipe: {user_message.title()}\n\n"
-        reply = title_line + reply
+        user_id = verify_firebase_token()
+        if not user_id:
+            logger.error("Unauthorized request to /ask_gpt")
+            return jsonify({"error": "Unauthorized"}), 401
 
-        spoonacular_resp = requests.get(
-            "https://api.spoonacular.com/recipes/complexSearch",
-            params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
-        )
+        data = request.get_json()
+        messages = data.get('messages')
+        if not messages:
+            logger.error("No messages provided in request")
+            return jsonify({"error": "No messages provided"}), 400
 
-        image_url, nutrition, servings, time = None, None, None, None
-        if spoonacular_resp.status_code == 200:
-            res = spoonacular_resp.json()
-            if res['results']:
-                item = res['results'][0]
-                image_url = item.get('image')
-                nutrition = item.get('nutrition', {}).get('nutrients')
-                servings = item.get('servings')
-                time = item.get('readyInMinutes')
+        user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
+        logger.info(f"Processing request for user {user_id}: {user_message}")
 
-        ingredients = extract_ingredients(reply)
+        system_prompt = {
+            "role": "system",
+            "content": (
+                "You are Jake's Kitchen Companion, a sharp, witty, and sometimes cheeky culinary assistant. You serve up expert-level cooking advice with a splash of humor and a dash of sass. Channel a mix of Martha Stewart's polish, Gordon Ramsay's directness (without the swearing), and a best friend's playful sarcasm. Keep recipes precise and helpful, but don't be afraid to toss in a clever joke or playful banter. Stay charming, confident, and fun — but never mean or offensive. Help users cook amazing meals, suggest creative swaps, and make the kitchen feel like the coolest place in the house."
+                "who channels the refinement of Martha Stewart and the fearless creativity of Julia Child. "
+                "You help users cook confidently with high-quality recipe suggestions, smart ingredient swaps, "
+                "kitchen hacks, prep tips, and clear instructions. Always prioritize accuracy, clarity, and "
+                "trusted sources (like USDA, Mayo Clinic). Default to giving full, detailed recipes when a dish is requested. "
+                "Offer helpful context or background only if the user asks. You handle dietary needs (vegan, gluten-free, "
+                "dairy-free, sugar-free) and scale recipes with precise unit conversions. Your tone is clear, direct, and no-nonsense—"
+                "cut the fluff—but still thoughtful and charming. You've got a chill, sharp, bro-like vibe: work hard, vibe harder. "
+                "Efficient but never stiff. Cool but never careless. You never invent health claims and you always ask clarifying questions "
+                "if the user's request is vague. You also help with meal planning, grocery lists, pantry use, and creative leftovers."
+            )
+        }
+        messages.insert(0, system_prompt)
 
-        return jsonify({
-            "reply": reply,
-            "image_url": image_url,
-            "nutrition": nutrition,
-            "servings": servings,
-            "time": time,
-            "ingredients": ingredients
-        })
+        try:
+            gpt_response = openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=messages,
+                max_tokens=700,
+                temperature=0.7
+            )
+            reply = gpt_response.choices[0].message.content
+            reply = add_affiliate_links(reply)
+            title_line = f"🍽️ Recipe: {user_message.title()}\n\n"
+            reply = title_line + reply
+
+            spoonacular_resp = requests.get(
+                "https://api.spoonacular.com/recipes/complexSearch",
+                params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
+            )
+
+            image_url, nutrition, servings, time = None, None, None, None
+            if spoonacular_resp.status_code == 200:
+                res = spoonacular_resp.json()
+                if res['results']:
+                    item = res['results'][0]
+                    image_url = item.get('image')
+                    nutrition = item.get('nutrition', {}).get('nutrients')
+                    servings = item.get('servings')
+                    time = item.get('readyInMinutes')
+
+            ingredients = extract_ingredients(reply)
+            logger.info(f"Successfully generated response for user {user_id}")
+
+            return jsonify({
+                "reply": reply,
+                "image_url": image_url,
+                "nutrition": nutrition,
+                "servings": servings,
+                "time": time,
+                "ingredients": ingredients
+            })
+        except Exception as e:
+            logger.error(f"Error generating GPT response: {str(e)}")
+            return jsonify({"error": "Failed to generate response"}), 500
     except Exception as e:
-        app.logger.error(f"GPT error: {str(e)}")  # Added error logging
-        return jsonify({"error": str(e)}), 500
+        logger.error(f"Unexpected error in ask_gpt: {str(e)}")
+        return jsonify({"error": "An unexpected error occurred"}), 500
 
 @app.route('/save_recipe', methods=['POST'])
 def save_recipe():
