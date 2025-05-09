@@ -2,17 +2,37 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import os
+import json
+import logging
 from openai import OpenAI
 from dotenv import load_dotenv
 import firebase_admin
-from firebase_admin import credentials, firestore
+from firebase_admin import credentials, firestore, auth
 import re
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
 if not firebase_admin._apps:
-    cred = credentials.Certificate("firebase-service-account.json")
-    firebase_admin.initialize_app(cred)
+    try:
+        # Get Firebase credentials from environment variable
+        firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
+        if not firebase_creds:
+            logger.error("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
+            raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
+        
+        # Parse the JSON string into a dictionary
+        cred_dict = json.loads(firebase_creds)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        logger.info("Firebase initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Firebase: {str(e)}")
+        raise
+
 db = firestore.client()
 
 app = Flask(__name__)
@@ -57,6 +77,20 @@ def extract_ingredients(text):
             ingredient = re.sub(r'\d+([\/\.]?\d+)?\s?(cups?|cup|tbsp|tsp|oz|g|ml)?\s?', '', match.group(1), flags=re.IGNORECASE)
             ingredients.append(ingredient.strip())
     return list(set(ingredients))
+
+def verify_firebase_token():
+    auth_header = request.headers.get('Authorization')
+    if not auth_header or not auth_header.startswith('Bearer '):
+        logger.error("No Authorization header or invalid format")
+        return None
+    
+    token = auth_header.split('Bearer ')[1]
+    try:
+        decoded_token = auth.verify_id_token(token)
+        return decoded_token['uid']
+    except Exception as e:
+        logger.error(f"Error verifying token: {str(e)}")
+        return None
 
 @app.route('/')
 def home():
@@ -130,26 +164,44 @@ def ask_gpt():
 
 @app.route('/save_recipe', methods=['POST'])
 def save_recipe():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    recipe = data.get('recipe')
-    if not user_id or not recipe:
-        return jsonify({"error": "Missing user_id or recipe"}), 400
-    db.collection('users').document(user_id).collection('recipes').add(recipe)
-    return jsonify({"status": "Recipe saved"})
+    try:
+        user_id = verify_firebase_token()
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        data = request.get_json()
+        recipe = data.get('recipe')
+        if not recipe:
+            logger.error("Missing recipe in save_recipe request")
+            return jsonify({"error": "Missing recipe"}), 400
+        
+        logger.info(f"Saving recipe for user: {user_id}")
+        db.collection('users').document(user_id).collection('recipes').add(recipe)
+        logger.info("Recipe saved successfully")
+        return jsonify({"status": "Recipe saved"})
+    except Exception as e:
+        logger.error(f"Error in save_recipe: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/get_recipes', methods=['GET'])
 def get_recipes():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-    recipes = []
-    docs = db.collection('users').document(user_id).collection('recipes').stream()
-    for doc in docs:
-        r = doc.to_dict()
-        r['id'] = doc.id
-        recipes.append(r)
-    return jsonify(recipes)
+    try:
+        user_id = verify_firebase_token()
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+        
+        logger.info(f"Fetching recipes for user: {user_id}")
+        recipes = []
+        docs = db.collection('users').document(user_id).collection('recipes').stream()
+        for doc in docs:
+            r = doc.to_dict()
+            r['id'] = doc.id
+            recipes.append(r)
+        logger.info(f"Successfully fetched {len(recipes)} recipes")
+        return jsonify(recipes)
+    except Exception as e:
+        logger.error(f"Error in get_recipes: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/delete_recipe', methods=['DELETE'])
 def delete_recipe():
@@ -168,13 +220,24 @@ def delete_recipe():
 
 @app.route('/update_pantry', methods=['POST'])
 def update_pantry():
-    data = request.get_json()
-    user_id = data.get('user_id')
-    pantry_items = data.get('pantry')
-    if not user_id or pantry_items is None:
-        return jsonify({"error": "Missing user_id or pantry"}), 400
-    db.collection('users').document(user_id).update({'pantry': pantry_items})
-    return jsonify({"status": "Pantry updated"})
+    try:
+        user_id = verify_firebase_token()
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        data = request.get_json()
+        pantry_items = data.get('pantry')
+        if pantry_items is None:
+            logger.error("Missing pantry in update_pantry request")
+            return jsonify({"error": "Missing pantry"}), 400
+        
+        logger.info(f"Updating pantry for user: {user_id}")
+        db.collection('users').document(user_id).update({'pantry': pantry_items})
+        logger.info("Pantry updated successfully")
+        return jsonify({"status": "Pantry updated"})
+    except Exception as e:
+        logger.error(f"Error in update_pantry: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/update_grocery_list', methods=['POST'])
 def update_grocery_list():
@@ -198,12 +261,19 @@ def save_pantry():
 
 @app.route('/get_pantry', methods=['GET'])
 def get_pantry():
-    user_id = request.args.get('user_id')
-    if not user_id:
-        return jsonify({"error": "Missing user_id"}), 400
-    doc = db.collection('users').document(user_id).get()
-    pantry = doc.to_dict().get('pantry', []) if doc.exists else []
-    return jsonify({"pantry": pantry})
+    try:
+        user_id = verify_firebase_token()
+        if not user_id:
+            return jsonify({"error": "Unauthorized"}), 401
+
+        logger.info(f"Fetching pantry for user: {user_id}")
+        doc = db.collection('users').document(user_id).get()
+        pantry = doc.to_dict().get('pantry', []) if doc.exists else []
+        logger.info(f"Successfully fetched pantry with {len(pantry)} items")
+        return jsonify({"pantry": pantry})
+    except Exception as e:
+        logger.error(f"Error in get_pantry: {str(e)}")
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/get_recipe_detail', methods=['GET'])
 def get_recipe_detail():
