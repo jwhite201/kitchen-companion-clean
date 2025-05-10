@@ -98,6 +98,9 @@ def home():
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
+    logger.info("Request received at /ask_gpt")
+    data = request.get_json()
+    logger.info(f"Request JSON: {data}")
     try:
         user_id = verify_firebase_token()
         if not user_id:
@@ -183,7 +186,7 @@ def save_recipe():
             return jsonify({"error": "Unauthorized"}), 401
 
         data = request.get_json()
-        recipe = data.get('recipe')
+        recipe = data if isinstance(data, dict) else data.get('recipe')
         if not recipe:
             logger.error("Missing recipe in save_recipe request")
             return jsonify({"error": "Missing recipe"}), 400
@@ -233,6 +236,40 @@ def delete_recipe():
     recipe_ref.delete()
     return jsonify({'message': 'Recipe deleted successfully'}), 200
 
+@app.route('/get_pantry', methods=['GET'])
+def get_pantry():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    doc = db.collection('users').document(user_id).get()
+    pantry = doc.to_dict().get('pantry', []) if doc.exists else []
+    return jsonify({"items": pantry})
+
+@app.route('/update_pantry', methods=['POST'])
+def update_pantry():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    items = data.get('items')
+    if items is None:
+        return jsonify({"error": "Missing items"}), 400
+
+    db.collection('users').document(user_id).set({'pantry': items}, merge=True)
+    return jsonify({"status": "Pantry updated"})
+
+@app.route('/get_grocery_list', methods=['GET'])
+def get_grocery_list():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    doc = db.collection('users').document(user_id).get()
+    grocery_list = doc.to_dict().get('grocery_list', []) if doc.exists else []
+    return jsonify({"grocery_list": grocery_list})
+
 @app.route('/update_grocery_list', methods=['POST'])
 def update_grocery_list():
     user_id = verify_firebase_token()
@@ -240,26 +277,12 @@ def update_grocery_list():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
-    grocery_items = data.get('grocery_list')
+    grocery_items = data.get('grocery_list') or data.get('items')
     if grocery_items is None:
         return jsonify({"error": "Missing grocery_list"}), 400
 
-    db.collection('users').document(user_id).update({'grocery_list': grocery_items})
+    db.collection('users').document(user_id).set({'grocery_list': grocery_items}, merge=True)
     return jsonify({"status": "Grocery list updated"})
-
-@app.route('/save_pantry', methods=['POST'])
-def save_pantry():
-    user_id = verify_firebase_token()
-    if not user_id:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    data = request.get_json()
-    pantry = data.get('pantry')
-    if pantry is None:
-        return jsonify({"error": "Missing pantry"}), 400
-
-    db.collection('users').document(user_id).set({'pantry': pantry}, merge=True)
-    return jsonify({"status": "Pantry saved"})
 
 @app.route('/get_recipe_detail', methods=['GET'])
 def get_recipe_detail():
