@@ -15,14 +15,21 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# Firebase setup
+# ✅ Firebase setup from env var (Render-friendly)
 if not firebase_admin._apps:
     firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
     if not firebase_creds:
-        logger.error("Missing FIREBASE_SERVICE_ACCOUNT env variable")
-        raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT env variable")
-    cred = credentials.Certificate(json.loads(firebase_creds))
-    firebase_admin.initialize_app(cred)
+        logger.error("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
+        raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
+
+    try:
+        cred_dict = json.loads(firebase_creds)
+        cred = credentials.Certificate(cred_dict)
+        firebase_admin.initialize_app(cred)
+        logger.info("Firebase initialized successfully")
+    except Exception as e:
+        logger.error(f"Error initializing Firebase: {e}")
+        raise
 
 db = firestore.client()
 
