@@ -18,13 +18,11 @@ load_dotenv()
 
 if not firebase_admin._apps:
     try:
-        # Get Firebase credentials from environment variable
         firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
         if not firebase_creds:
             logger.error("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
             raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
-        
-        # Parse the JSON string into a dictionary
+
         cred_dict = json.loads(firebase_creds)
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
@@ -34,9 +32,6 @@ if not firebase_admin._apps:
         raise
 
 db = firestore.client()
-
-from flask import Flask
-from flask_cors import CORS
 
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
@@ -77,7 +72,7 @@ def extract_ingredients(text):
     for line in lines:
         match = re.match(r'- (.+)', line)
         if match:
-            ingredient = re.sub(r'\d+([\/\.]?\d+)?\s?(cups?|cup|tbsp|tsp|oz|g|ml)?\s?', '', match.group(1), flags=re.IGNORECASE)
+            ingredient = re.sub(r'\d+([\/.]?\d+)?\s?(cups?|cup|tbsp|tsp|oz|g|ml)?\s?', '', match.group(1), flags=re.IGNORECASE)
             ingredients.append(ingredient.strip())
     return list(set(ingredients))
 
@@ -86,7 +81,7 @@ def verify_firebase_token():
     if not auth_header or not auth_header.startswith('Bearer '):
         logger.error("No Authorization header or invalid format")
         return None
-    
+
     token = auth_header.split('Bearer ')[1]
     try:
         decoded_token = auth.verify_id_token(token)
@@ -98,6 +93,7 @@ def verify_firebase_token():
 @app.route('/')
 def home():
     return jsonify({"message": "Kitchen Companion backend is live!"})
+
 
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
