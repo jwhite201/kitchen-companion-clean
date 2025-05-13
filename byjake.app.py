@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-# ✅ Firebase setup from env var (Render-friendly)
 if not firebase_admin._apps:
     firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
     if not firebase_creds:
@@ -24,6 +23,11 @@ if not firebase_admin._apps:
 
     try:
         cred_dict = json.loads(firebase_creds)
+
+        # 🔧 Fix the private key line breaks before passing to credentials
+        if "private_key" in cred_dict:
+            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
         logger.info("Firebase initialized successfully")
