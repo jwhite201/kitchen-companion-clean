@@ -44,6 +44,16 @@ except json.JSONDecodeError as e:
         logging.error(f"Failed to parse Firebase credentials after cleaning: {str(e)}")
         raise
 
+# Ensure private key is properly formatted
+if "private_key" in cred_dict:
+    # Replace literal \n with actual newlines
+    cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+    # Ensure the private key has proper PEM format
+    if not cred_dict["private_key"].startswith("-----BEGIN PRIVATE KEY-----"):
+        cred_dict["private_key"] = "-----BEGIN PRIVATE KEY-----\n" + cred_dict["private_key"]
+    if not cred_dict["private_key"].endswith("-----END PRIVATE KEY-----"):
+        cred_dict["private_key"] = cred_dict["private_key"] + "\n-----END PRIVATE KEY-----"
+
 cred = credentials.Certificate(cred_dict)
 firebase_admin.initialize_app(cred)
 db = firestore.client()
