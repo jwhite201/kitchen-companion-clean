@@ -18,34 +18,34 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialize Firebase
-if not firebase_admin._apps:
-    firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
-    if not firebase_creds:
-        logger.error("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
-        raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
+firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
+if not firebase_creds:
+    raise ValueError("FIREBASE_SERVICE_ACCOUNT environment variable is not set")
 
+try:
+    # First try direct parsing
+    cred_dict = json.loads(firebase_creds)
+except json.JSONDecodeError as e:
+    logging.error(f"Error initializing Firebase: {str(e)}")
+    logging.error(f"Credentials string: {firebase_creds[:100]}...")
+    
+    # Clean the string and try again
     try:
-        # Clean and parse the JSON string
-        firebase_creds = firebase_creds.strip()
-        # Remove any BOM if present
-        if firebase_creds.startswith('\ufeff'):
-            firebase_creds = firebase_creds[1:]
+        # Remove any BOM and clean the string
+        cleaned_creds = firebase_creds.strip().replace('\ufeff', '')
         # Handle escaped characters
-        firebase_creds = firebase_creds.encode('utf-8').decode('unicode_escape')
-        cred_dict = json.loads(firebase_creds)
-        
-        # Handle private key formatting
-        if "private_key" in cred_dict:
-            cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-        
-        cred = credentials.Certificate(cred_dict)
-        firebase_admin.initialize_app(cred)
-        logger.info("Firebase initialized successfully")
-    except Exception as e:
-        logger.error(f"Error initializing Firebase: {e}")
-        logger.error(f"Credentials string: {firebase_creds[:100]}...")  # Log first 100 chars for debugging
+        cleaned_creds = cleaned_creds.replace('\\"', '"').replace('\\\\', '\\')
+        # Ensure private key formatting
+        cleaned_creds = cleaned_creds.replace('\\n', '\n')
+        # Remove any extra quotes at the start and end
+        cleaned_creds = cleaned_creds.strip('"')
+        cred_dict = json.loads(cleaned_creds)
+    except json.JSONDecodeError as e:
+        logging.error(f"Failed to parse Firebase credentials after cleaning: {str(e)}")
         raise
 
+cred = credentials.Certificate(cred_dict)
+firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # Initialize Flask app
@@ -231,5 +231,5 @@ def ask_gpt():
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 10000))
+    port = int(os.environ.get('PORT', 10001))
     app.run(host='0.0.0.0', port=port)
