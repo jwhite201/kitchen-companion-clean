@@ -124,14 +124,37 @@ def update_preferences():
     db.collection('users').document(user_id).set({'preferences': prefs}, merge=True)
     return jsonify({'status': 'ok'})
 
+@app.route('/update_pantry', methods=['POST'])
+def update_pantry():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    items = request.get_json().get('items', [])
+    db.collection('users').document(user_id).set({'pantry': items}, merge=True)
+    return jsonify({'status': 'ok'})
+
+@app.route('/get_pantry', methods=['GET'])
+def get_pantry():
+    user_id = verify_firebase_token()
+    if not user_id:
+        return jsonify({'error': 'Unauthorized'}), 401
+    doc = db.collection('users').document(user_id).get()
+    pantry = doc.to_dict().get('pantry', []) if doc.exists else []
+    return jsonify({'pantry': pantry})
+
 @app.route('/ask_gpt', methods=['POST'])
 def ask_gpt():
     logger.info("Request received at /ask_gpt")
     try:
         user_id = verify_firebase_token()
-        if not user_id:
-            logger.warning("Unauthorized request")
-            return jsonify({"error": "Unauthorized"}), 401
+        if user_id:
+            doc = db.collection('users').document(user_id).get()
+            prefs = doc.to_dict() if doc.exists else {}
+            dietary_prefs = prefs.get('preferences', [])
+            pantry_items = prefs.get('pantry', [])
+        else:
+            dietary_prefs = []
+            pantry_items = []
 
         data = request.get_json()
         logger.info(f"Request JSON: {data}")
@@ -141,12 +164,6 @@ def ask_gpt():
             return jsonify({"error": "No messages provided"}), 400
 
         user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
-
-        # Fetch user preferences & pantry
-        doc = db.collection('users').document(user_id).get()
-        prefs = doc.to_dict() if doc.exists else {}
-        dietary_prefs = prefs.get('preferences', [])
-        pantry_items = prefs.get('pantry', [])
 
         system_prompt = {
             "role": "system",
