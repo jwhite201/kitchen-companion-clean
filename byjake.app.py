@@ -25,14 +25,25 @@ if not firebase_admin._apps:
         raise EnvironmentError("Missing FIREBASE_SERVICE_ACCOUNT environment variable")
 
     try:
+        # Clean and parse the JSON string
+        firebase_creds = firebase_creds.strip()
+        # Remove any BOM if present
+        if firebase_creds.startswith('\ufeff'):
+            firebase_creds = firebase_creds[1:]
+        # Handle escaped characters
+        firebase_creds = firebase_creds.encode('utf-8').decode('unicode_escape')
         cred_dict = json.loads(firebase_creds)
+        
+        # Handle private key formatting
         if "private_key" in cred_dict:
             cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+        
         cred = credentials.Certificate(cred_dict)
         firebase_admin.initialize_app(cred)
         logger.info("Firebase initialized successfully")
     except Exception as e:
         logger.error(f"Error initializing Firebase: {e}")
+        logger.error(f"Credentials string: {firebase_creds[:100]}...")  # Log first 100 chars for debugging
         raise
 
 db = firestore.client()
@@ -82,8 +93,8 @@ affiliate_links = {
 def add_affiliate_links(text):
     added = 0
     for keyword, url in affiliate_links.items():
-        if re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE) and added < 4:
-            text = re.sub(rf"\b({re.escape(keyword)})\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
+        if re.search(rf"\\b{re.escape(keyword)}\\b", text, re.IGNORECASE) and added < 4:
+            text = re.sub(rf"\\b({re.escape(keyword)})\\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
             added += 1
     return text
 
@@ -93,22 +104,20 @@ def extract_ingredients(text):
     for line in lines:
         match = re.match(r'- (.+)', line)
         if match:
-            ingredient = re.sub(r'\d+([\/.]?\d+)?\s?(cups?|cup|tbsp|tsp|oz|g|ml)?\s?', '', match.group(1), flags=re.IGNORECASE)
+            ingredient = re.sub(r'\d+([\/\.]?\d+)?\s?(cups?|cup|tbsp|tsp|oz|g|ml)?\s?', '', match.group(1), flags=re.IGNORECASE)
             ingredients.append(ingredient.strip())
     return list(set(ingredients))
 
 def verify_firebase_token():
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
-        logger.error("No Authorization header or invalid format")
         return None
-
     token = auth_header.split('Bearer ')[1]
     try:
         decoded_token = auth.verify_id_token(token)
         return decoded_token['uid']
     except Exception as e:
-        logger.error(f"Error verifying token: {str(e)}")
+        logger.warning(f"Token verification failed: {e}")
         return None
 
 @app.route('/')
@@ -160,7 +169,6 @@ def ask_gpt():
         logger.info(f"Request JSON: {data}")
         messages = data.get('messages')
         if not messages:
-            logger.warning("Missing messages in request")
             return jsonify({"error": "No messages provided"}), 400
 
         user_message = [m['content'] for m in messages if m['role'] == 'user'][-1]
@@ -176,7 +184,6 @@ def ask_gpt():
         }
         messages.insert(0, system_prompt)
 
-        # GPT call
         gpt_response = openai_client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=messages,
@@ -188,7 +195,6 @@ def ask_gpt():
         reply = add_affiliate_links(reply)
         reply = f"<strong>🍽️ Recipe: {user_message.title()}</strong><br><br>" + reply.replace("\n", "<br>")
 
-        # Spoonacular call
         spoonacular_resp = requests.get(
             "https://api.spoonacular.com/recipes/complexSearch",
             params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
@@ -222,7 +228,6 @@ def ask_gpt():
         logger.error(f"Error in /ask_gpt: {str(e)}", exc_info=True)
         return jsonify({"error": "An unexpected error occurred"}), 500
 
-# Required by Render for port binding
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
