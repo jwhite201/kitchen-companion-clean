@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Companion</title>
+</head>
+<body>
+    <!-- HTML BLOCK 1: Kitchen Companion Chat UI -->
+    <div id="kitchen-chat" style="max-width:800px; margin:60px auto; display:flex; flex-direction:column;">
+        <h2>Kitchen Companion</h2>
+        <div id="chat-window" class="hidden-chat">
+            <div class="typing-indicator"><span></span><span></span><span></span></div>
+        </div>
+        <form id="chatForm" style="display:flex; margin-top:10px;">
+            <input type="text" id="chatInput" placeholder="Ask The Kitchen Companion" required style="flex:1; padding:10px; font-size:16px;">
+            <button type="submit" id="submitBtn">Ask</button>
+        </form>
+        <div id="quickButtons" style="display:flex; flex-wrap:wrap; margin-top:10px;">
+            <button data-pref="vegan">🌱 Vegan</button>
+            <button data-pref="gluten-free">🌾 Gluten-Free</button>
+            <button data-pref="dairy-free">🥛 Dairy-Free</button>
+            <button data-pref="sugar-free">🚫 Sugar-Free</button>
+            <button id="clearChatBtn" style="display:none; background-color:#f88; color:#fff;">🔄 Clear Chat</button>
+        </div>
+
+        <div id="actionButtons" style="margin-top:20px; display:flex; gap:10px; flex-wrap:wrap;">
+            <button id="saveRecipeBtn">💾 Save Recipe</button>
+            <button id="openPantryBtn">🧺 Pantry</button>
+            <button id="viewRecipesBtn">📖 Recipe Box</button>
+        </div>
+    </div>
+
+    <style>
+        body { font-family: sans-serif; margin: 0 auto; padding: 20px; max-width: 800px; }
+        .hidden-chat { display: none !important; }
+        .selected-pref { background-color: #cce5ff !important; }
+        button {
+            padding: 6px 12px;
+            margin: 5px;
+            font-size: 14px;
+            background-color: rgba(0,0,0,0.04);
+            border: 1px solid #ccc;
+            border-radius: 5px;
+            color: #333;
+            cursor: pointer;
+        }
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        button:hover:not(:disabled) { background-color: rgba(0,0,0,0.1); }
+        #chat-window div {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 15px;
+            max-width: 70%;
+            word-wrap: break-word;
+        }
+        .user-msg { background-color: #0b93f6; color: white; align-self: flex-end; }
+        .bot-msg { background-color: #e5e5ea; color: black; align-self: flex-start; }
+        .error-msg { background-color: #ffebee; color: #c62828; align-self: flex-start; }
+        #chat-window {
+            display: flex;
+            flex-direction: column;
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 10px;
+            border-radius: 10px;
+            height: 400px;
+            overflow-y: auto;
+            margin-bottom: 10px;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            background-color: #e5e5ea;
+            border-radius: 15px;
+            align-self: flex-start;
+        }
+        .typing-indicator span {
+            height: 8px;
+            width: 8px;
+            background-color: #666;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 0 2px;
+            animation: typing 1s infinite;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing {
+            0% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+            100% { transform: translateY(0); }
+        }
+    </style>
+
+    <!-- Updated Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCk0Zo072caqSDqQ6i22qoQeInXuwMgQo",
+            authDomain: "byjake-4a1e9.firebaseapp.com",
+            projectId: "byjake-4a1e9",
+            storageBucket: "byjake-4a1e9.appspot.com",
+            messagingSenderId: "591703320888",
+            appId: "1:591703320888:web:f7dec2530e12cfccd739cd",
+            measurementId: "G-DZ42D9HJPP"
+        };
+        if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+
+        let userPreferences = new Set();
+        // Use local development URL when running locally
+        const BACKEND_URL = window.location.hostname === 'localhost' 
+            ? 'http://localhost:10001'
+            : 'https://kitchen-companion.onrender.com';
+
+        // Helper function to show error message
+        function showError(message) {
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.innerHTML += `<div class='error-msg'>${message}</div>`;
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+        }
+
+        // Helper function to set loading state
+        function setLoading(isLoading) {
+            const submitBtn = document.getElementById('submitBtn');
+            const chatInput = document.getElementById('chatInput');
+            submitBtn.disabled = isLoading;
+            chatInput.disabled = isLoading;
+            document.querySelector('.typing-indicator').style.display = isLoading ? 'block' : 'none';
+        }
+
+        document.querySelectorAll('#quickButtons button[data-pref]').forEach(btn => {
+            btn.addEventListener('click', function () {
+                const pref = this.getAttribute('data-pref');
+                if (userPreferences.has(pref)) {
+                    userPreferences.delete(pref);
+                    this.classList.remove('selected-pref');
+                } else {
+                    userPreferences.add(pref);
+                    this.classList.add('selected-pref');
+                }
+            });
+        });
+
+        document.getElementById('clearChatBtn').addEventListener('click', () => {
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.innerHTML = '<div class="typing-indicator"><span></span><span></span><span></span></div>';
+            chatWindow.classList.add('hidden-chat');
+            document.getElementById('clearChatBtn').style.display = 'none';
+        });
+
+        document.getElementById('chatForm').addEventListener('submit', async e => {
+            e.preventDefault();
+
+            const chatInput = document.getElementById('chatInput');
+            const message = chatInput.value.trim();
+            if (!message) return;
+
+            const chatWindow = document.getElementById('chat-window');
+            chatWindow.classList.remove('hidden-chat');
+            chatWindow.innerHTML += `<div class='user-msg'>${message}</div>`;
+            chatInput.value = '';
+            setLoading(true);
+            chatWindow.scrollTop = chatWindow.scrollHeight;
+
+            try {
+                let token = '';
+                if (auth.currentUser) {
+                    try {
+                        token = await auth.currentUser.getIdToken();
+                        await fetch(`${BACKEND_URL}/update_preferences`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                            body: JSON.stringify({ preferences: Array.from(userPreferences) })
+                        });
+                    } catch (prefError) {
+                        console.warn('Failed to update preferences:', prefError);
+                        // Continue with the chat even if preferences update fails
+                    }
+                }
+
+                const res = await fetch(`${BACKEND_URL}/ask_gpt`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token && { Authorization: `Bearer ${token}` })
+                    },
+                    body: JSON.stringify({ messages: [{ role: 'user', content: message }] })
+                });
+
+                if (!res.ok) {
+                    throw new Error(`Server responded with ${res.status}: ${res.statusText}`);
+                }
+
+                const data = await res.json();
+                setLoading(false);
+
+                let botHTML = `<div class='bot-msg'>${data.reply || 'No response.'}`;
+                if (data.image_url) botHTML += `<br><img src="${data.image_url}" style="max-width:100%; margin-top:10px;">`;
+                if (data.servings || data.time) botHTML += `<br><small>Servings: ${data.servings || '?'} | Time: ${data.time || '?'} mins</small>`;
+                botHTML += `</div>`;
+
+                chatWindow.innerHTML += botHTML;
+                chatWindow.scrollTop = chatWindow.scrollHeight;
+                document.getElementById('clearChatBtn').style.display = 'inline-block';
+            } catch (err) {
+                console.error('Error:', err);
+                setLoading(false);
+                showError(`Error: ${err.message || 'An unexpected error occurred. Please try again.'}`);
+            }
+        });
+
+        auth.onAuthStateChanged(user => {
+            // Update UI based on auth state if needed
+            const actionButtons = document.getElementById('actionButtons');
+            if (user) {
+                actionButtons.style.display = 'flex';
+            } else {
+                actionButtons.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
