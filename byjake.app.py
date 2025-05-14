@@ -93,8 +93,8 @@ affiliate_links = {
 def add_affiliate_links(text):
     added = 0
     for keyword, url in affiliate_links.items():
-        if re.search(rf"\\b{re.escape(keyword)}\\b", text, re.IGNORECASE) and added < 4:
-            text = re.sub(rf"\\b({re.escape(keyword)})\\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
+        if re.search(rf"\b{re.escape(keyword)}\b", text, re.IGNORECASE) and added < 4:
+            text = re.sub(rf"\b({re.escape(keyword)})\b", f"[\\1]({url})", text, count=1, flags=re.IGNORECASE)
             added += 1
     return text
 
@@ -111,13 +111,15 @@ def extract_ingredients(text):
 def verify_firebase_token():
     auth_header = request.headers.get('Authorization')
     if not auth_header or not auth_header.startswith('Bearer '):
+        logger.error("No Authorization header or invalid format")
         return None
+
     token = auth_header.split('Bearer ')[1]
     try:
         decoded_token = auth.verify_id_token(token)
         return decoded_token['uid']
     except Exception as e:
-        logger.warning(f"Token verification failed: {e}")
+        logger.error(f"Error verifying token: {str(e)}")
         return None
 
 @app.route('/')
