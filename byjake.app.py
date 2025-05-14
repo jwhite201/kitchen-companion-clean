@@ -18,45 +18,22 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # Initialize Firebase
-firebase_creds = os.getenv('FIREBASE_SERVICE_ACCOUNT')
-if not firebase_creds:
-    raise ValueError("FIREBASE_SERVICE_ACCOUNT environment variable is not set")
-
 try:
-    # First try direct parsing
-    cred_dict = json.loads(firebase_creds)
-except json.JSONDecodeError as e:
-    logging.error(f"Error initializing Firebase: {str(e)}")
-    logging.error(f"Credentials string: {firebase_creds[:100]}...")
+    # Read credentials directly from JSON file
+    with open('firebase-credentials.json', 'r') as f:
+        cred_dict = json.load(f)
     
-    # Clean the string and try again
-    try:
-        # Remove any BOM and clean the string
-        cleaned_creds = firebase_creds.strip().replace('\ufeff', '')
-        # Handle escaped characters
-        cleaned_creds = cleaned_creds.replace('\\"', '"').replace('\\\\', '\\')
-        # Ensure private key formatting
-        cleaned_creds = cleaned_creds.replace('\\n', '\n')
-        # Remove any extra quotes at the start and end
-        cleaned_creds = cleaned_creds.strip('"')
-        cred_dict = json.loads(cleaned_creds)
-    except json.JSONDecodeError as e:
-        logging.error(f"Failed to parse Firebase credentials after cleaning: {str(e)}")
-        raise
-
-# Ensure private key is properly formatted
-if "private_key" in cred_dict:
-    # Replace literal \n with actual newlines
-    cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
-    # Ensure the private key has proper PEM format
-    if not cred_dict["private_key"].startswith("-----BEGIN PRIVATE KEY-----"):
-        cred_dict["private_key"] = "-----BEGIN PRIVATE KEY-----\n" + cred_dict["private_key"]
-    if not cred_dict["private_key"].endswith("-----END PRIVATE KEY-----"):
-        cred_dict["private_key"] = cred_dict["private_key"] + "\n-----END PRIVATE KEY-----"
-
-cred = credentials.Certificate(cred_dict)
-firebase_admin.initialize_app(cred)
-db = firestore.client()
+    # Ensure private key is properly formatted
+    if "private_key" in cred_dict:
+        cred_dict["private_key"] = cred_dict["private_key"].replace("\\n", "\n")
+    
+    cred = credentials.Certificate(cred_dict)
+    firebase_admin.initialize_app(cred)
+    db = firestore.client()
+    logger.info("Firebase initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing Firebase: {str(e)}")
+    raise
 
 # Initialize Flask app
 app = Flask(__name__)
