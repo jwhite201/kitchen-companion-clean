@@ -88,7 +88,7 @@
         if (!firebase.apps.length) {
             firebase.initializeApp(pantryFirebaseConfig);
         }
-        const auth = firebase.auth();
+        const pantryAuth = firebase.auth();
         const db = firebase.firestore();
 
         const pantryInput = document.getElementById('pantry-input');
@@ -122,7 +122,7 @@
         }
 
         async function updatePantry() {
-            const user = auth.currentUser;
+            const user = pantryAuth.currentUser;
             if (!user) return;
             const token = await user.getIdToken();
             await fetch('https://kitchen-companion.onrender.com/update_pantry', {
@@ -134,10 +134,10 @@
         }
 
         function signInWithGoogle() {
-            auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+            pantryAuth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
                 .then(result => {
                     const user = result.user;
-                    document.getElementById('user-status').innerText = `Signed in as ${user.displayName}`;
+                    document.getElementById('user-status').innerText = `Signed in as ${user.displayName || 'User'}`;
                     pantrySection.style.display = 'block';
                     fetchPantry();
                 })
@@ -148,7 +148,7 @@
         }
 
         function signOut() {
-            auth.signOut().then(() => {
+            pantryAuth.signOut().then(() => {
                 document.getElementById('user-status').innerText = 'Not signed in';
                 pantry = [];
                 pantrySection.style.display = 'none';
@@ -157,7 +157,7 @@
         }
 
         async function fetchPantry() {
-            const user = auth.currentUser;
+            const user = pantryAuth.currentUser;
             if (!user) return;
             const token = await user.getIdToken();
             const res = await fetch('https://kitchen-companion.onrender.com/get_pantry', {
@@ -168,7 +168,7 @@
             renderPantryList();
         }
 
-        auth.onAuthStateChanged(user => {
+        pantryAuth.onAuthStateChanged(user => {
             if (user) {
                 document.getElementById('user-status').innerText = `Signed in as ${user.displayName || 'User'}`;
                 pantrySection.style.display = 'block';
@@ -182,4 +182,4 @@
         });
     </script>
 </body>
-</html> 
+</html>
