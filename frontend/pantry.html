@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kitchen Companion - Pantry</title>
+    <style>
+        body { 
+            font-family: sans-serif; 
+            margin: 0 auto; 
+            padding: 20px; 
+            max-width: 800px; 
+        }
+        #pantry-list {
+            list-style: none;
+            padding: 0;
+        }
+        #pantry-list li {
+            padding: 8px;
+            margin: 4px 0;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #pantry-list li:hover {
+            background-color: #e0e0e0;
+        }
+        #pantry-input {
+            padding: 8px;
+            margin-right: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            width: 200px;
+        }
+        button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #user-status {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <!-- HTML BLOCK 2: Pantry + Auth Management -->
+    <div style="margin: 20px 0; text-align: center;">
+        <button onclick="signInWithGoogle()" style="padding: 6px 12px; font-size: 12px; background-color: #fff; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; color: #444;">
+            🔐 Sign In with Google
+        </button>
+        <button onclick="signOut()" style="padding: 6px 12px; font-size: 12px; background-color: #eee; border: 1px solid #ccc; border-radius: 5px; cursor: pointer; color: #444; margin-left: 10px;">
+            🚪 Sign Out
+        </button>
+        <p id="user-status" style="font-size: 12px; margin-top: 8px; color: gray;">Not signed in</p>
+    </div>
+
+    <div style="margin-top:20px; display:none;" id="pantry-section">
+        <h3>Your Pantry</h3>
+        <ul id="pantry-list"></ul>
+        <input type="text" id="pantry-input" placeholder="Add pantry item">
+        <button onclick="addPantryItem()">Add</button>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+    <script>
+        const pantryFirebaseConfig = {
+            apiKey: "AIzaSyCk0Zo072caqSDqQ6i22qoQeInXuwMgQo",
+            authDomain: "byjake-4a1e9.firebaseapp.com",
+            projectId: "byjake-4a1e9",
+            storageBucket: "byjake-4a1e9.appspot.com",
+            messagingSenderId: "591703320888",
+            appId: "1:591703320888:web:f7dec2530e12cfccd739cd",
+            measurementId: "G-DZ42D9HJPP"
+        };
+        if (!firebase.apps.length) {
+            firebase.initializeApp(pantryFirebaseConfig);
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        const pantryInput = document.getElementById('pantry-input');
+        const pantryList = document.getElementById('pantry-list');
+        const pantrySection = document.getElementById('pantry-section');
+        let pantry = [];
+
+        function renderPantryList() {
+            pantryList.innerHTML = '';
+            pantry.forEach((item, idx) => {
+                const li = document.createElement('li');
+                li.textContent = item;
+                li.style.cursor = 'pointer';
+                li.title = 'Click to remove';
+                li.onclick = () => removePantryItem(idx);
+                pantryList.appendChild(li);
+            });
+        }
+
+        function addPantryItem() {
+            const item = pantryInput.value.trim();
+            if (!item) return;
+            pantry.push(item);
+            updatePantry();
+            pantryInput.value = '';
+        }
+
+        function removePantryItem(index) {
+            pantry.splice(index, 1);
+            updatePantry();
+        }
+
+        async function updatePantry() {
+            const user = auth.currentUser;
+            if (!user) return;
+            const token = await user.getIdToken();
+            await fetch('https://kitchen-companion.onrender.com/update_pantry', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ items: pantry })
+            });
+            renderPantryList();
+        }
+
+        function signInWithGoogle() {
+            auth.signInWithPopup(new firebase.auth.GoogleAuthProvider())
+                .then(result => {
+                    const user = result.user;
+                    document.getElementById('user-status').innerText = `Signed in as ${user.displayName}`;
+                    pantrySection.style.display = 'block';
+                    fetchPantry();
+                })
+                .catch(error => {
+                    console.error("Sign-in error:", error);
+                    alert("Failed to sign in.");
+                });
+        }
+
+        function signOut() {
+            auth.signOut().then(() => {
+                document.getElementById('user-status').innerText = 'Not signed in';
+                pantry = [];
+                pantrySection.style.display = 'none';
+                renderPantryList();
+            });
+        }
+
+        async function fetchPantry() {
+            const user = auth.currentUser;
+            if (!user) return;
+            const token = await user.getIdToken();
+            const res = await fetch('https://kitchen-companion.onrender.com/get_pantry', {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            pantry = data.pantry || [];
+            renderPantryList();
+        }
+
+        auth.onAuthStateChanged(user => {
+            if (user) {
+                document.getElementById('user-status').innerText = `Signed in as ${user.displayName || 'User'}`;
+                pantrySection.style.display = 'block';
+                fetchPantry();
+            } else {
+                document.getElementById('user-status').innerText = 'Not signed in';
+                pantrySection.style.display = 'none';
+                pantry = [];
+                renderPantryList();
+            }
+        });
+    </script>
+</body>
+</html> 

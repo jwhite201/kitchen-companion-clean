@@ -37,7 +37,11 @@ except Exception as e:
 
 # Initialize Flask app
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
+CORS(app, resources={r"/*": {
+    "origins": ["http://localhost:8000", "http://localhost:8001", "https://kitchen-companion.onrender.com"],
+    "methods": ["GET", "POST", "OPTIONS"],
+    "allow_headers": ["Content-Type", "Authorization"]
+}})
 
 # Load API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -113,7 +117,7 @@ def verify_firebase_token():
 def home():
     return jsonify({"message": "Kitchen Companion backend is live!"})
 
-@app.route('/update_preferences', methods=['POST'])
+@app.route('/update_preferences', methods=['POST', 'OPTIONS'])
 def update_preferences():
     user_id = verify_firebase_token()
     if not user_id:
@@ -122,7 +126,7 @@ def update_preferences():
     db.collection('users').document(user_id).set({'preferences': prefs}, merge=True)
     return jsonify({'status': 'ok'})
 
-@app.route('/update_pantry', methods=['POST'])
+@app.route('/update_pantry', methods=['POST', 'OPTIONS'])
 def update_pantry():
     user_id = verify_firebase_token()
     if not user_id:
@@ -140,19 +144,29 @@ def get_pantry():
     pantry = doc.to_dict().get('pantry', []) if doc.exists else []
     return jsonify({'pantry': pantry})
 
-@app.route('/ask_gpt', methods=['POST'])
+@app.route('/ask_gpt', methods=['POST', 'OPTIONS'])
 def ask_gpt():
     logger.info("Request received at /ask_gpt")
     try:
-        user_id = verify_firebase_token()
+        # Try to get user_id from token, but don't require it
+        user_id = None
+        try:
+            user_id = verify_firebase_token()
+        except Exception as auth_error:
+            logger.info(f"No valid auth token: {str(auth_error)}")
+            # Continue without user authentication
+
+        # Get user preferences if authenticated
+        dietary_prefs = []
+        pantry_items = []
         if user_id:
-            doc = db.collection('users').document(user_id).get()
-            prefs = doc.to_dict() if doc.exists else {}
-            dietary_prefs = prefs.get('preferences', [])
-            pantry_items = prefs.get('pantry', [])
-        else:
-            dietary_prefs = []
-            pantry_items = []
+            try:
+                doc = db.collection('users').document(user_id).get()
+                prefs = doc.to_dict() if doc.exists else {}
+                dietary_prefs = prefs.get('preferences', [])
+                pantry_items = prefs.get('pantry', [])
+            except Exception as pref_error:
+                logger.warning(f"Failed to get user preferences: {str(pref_error)}")
 
         data = request.get_json()
         logger.info(f"Request JSON: {data}")
@@ -184,14 +198,16 @@ def ask_gpt():
         reply = add_affiliate_links(reply)
         reply = f"<strong>🍽️ Recipe: {user_message.title()}</strong><br><br>" + reply.replace("\n", "<br>")
 
-        spoonacular_resp = requests.get(
-            "https://api.spoonacular.com/recipes/complexSearch",
-            params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY}
-        )
+        try:
+            spoonacular_resp = requests.get(
+                "https://api.spoonacular.com/recipes/complexSearch",
+                params={'query': user_message, 'number': 1, 'addRecipeNutrition': True, 'apiKey': SPOONACULAR_API_KEY},
+                timeout=10
+            )
+            spoonacular_resp.raise_for_status()
 
-        image_url, nutrition, servings, time = None, None, None, None
-        if spoonacular_resp.status_code == 200:
-            try:
+            image_url, nutrition, servings, time = None, None, None, None
+            if spoonacular_resp.status_code == 200:
                 res = spoonacular_resp.json()
                 if res.get('results'):
                     item = res['results'][0]
@@ -199,8 +215,9 @@ def ask_gpt():
                     nutrition = item.get('nutrition', {}).get('nutrients')
                     servings = item.get('servings')
                     time = item.get('readyInMinutes')
-            except Exception as parse_err:
-                logger.warning(f"Failed to parse Spoonacular response: {parse_err}")
+        except Exception as spoonacular_error:
+            logger.warning(f"Failed to get Spoonacular data: {str(spoonacular_error)}")
+            image_url, nutrition, servings, time = None, None, None, None
 
         ingredients = extract_ingredients(reply)
 
