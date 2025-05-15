@@ -1,2 +1,7 @@
 .env
 firebase-service-account.json
+
+firebase-credentials.json
+firebase_creds_escaped.txt
+firebase_creds_fixed.txt
+firebase_creds_formatted.txt
