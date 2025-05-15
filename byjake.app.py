@@ -38,7 +38,12 @@ except Exception as e:
 # Initialize Flask app
 app = Flask(__name__)
 CORS(app, resources={r"/*": {
-    "origins": ["http://localhost:8000", "http://localhost:8001", "https://kitchen-companion.onrender.com"],
+    "origins": [
+        "http://localhost:8000",
+        "http://localhost:8001",
+        "https://kitchen-companion.onrender.com",
+        "https://byjake.com"
+    ],
     "methods": ["GET", "POST", "OPTIONS"],
     "allow_headers": ["Content-Type", "Authorization"]
 }})
