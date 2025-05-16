@@ -151,6 +151,9 @@ def get_pantry():
 
 @app.route('/ask_gpt', methods=['POST', 'OPTIONS'])
 def ask_gpt():
+    if request.method == 'OPTIONS':
+        return '', 200  # Respond to CORS preflight
+
     logger.info("Request received at /ask_gpt")
     try:
         # Try to get user_id from token, but don't require it
